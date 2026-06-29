@@ -52,6 +52,9 @@ src-tauri/target/
 Cargo.lock
 
 
+# Pasta de rascunho/experimentos locais (scripts temporários de inspeção).
+.scratch/
+
 # --- Editor / OS ---
 .vscode/
 .idea/
