@@ -16,13 +16,26 @@ function melhorSetor(p: MetricasPiloto, setor: number): number | null {
   return p.melhor_setor3_s
 }
 
-/** Classe de cor pela magnitude do gap (maior gap = mais "quente"). */
+/** Classe de cor do TEXTO pela magnitude do gap (maior gap = mais "quente"). */
 function classeGap(gap: number | null): string {
   if (gap === null) return ''
   if (gap <= 0.001) return 'gap-0'
   if (gap < 0.15) return 'gap-1'
   if (gap < 0.4) return 'gap-2'
   return 'gap-3'
+}
+
+/**
+ * Cor de FUNDO da célula proporcional ao gap dentro do setor (mapa de calor de
+ * verdade): referência fica verde suave; quanto maior o gap em relação ao
+ * maior gap daquele setor, mais saturado o laranja/vermelho. Sob luz de
+ * garagem, o preenchimento salta mais aos olhos que só a cor do texto.
+ */
+function fundoGap(gap: number | null, maxGapSetor: number): string {
+  if (gap === null) return 'transparent'
+  if (gap <= 0.001) return 'rgba(56, 224, 139, 0.16)' // referência (mais rápido)
+  const razao = maxGapSetor > 0 ? Math.min(1, gap / maxGapSetor) : 0
+  return `rgba(255, 90, 60, ${0.14 + 0.46 * razao})`
 }
 
 /**
@@ -99,6 +112,15 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
               <tbody>
                 {SETORES.map((s) => {
                   const ref = refPorSetor[s]
+                  // Maior gap deste setor entre os selecionados, para normalizar
+                  // a intensidade do mapa de calor linha a linha.
+                  const maxGapSetor = Math.max(
+                    0,
+                    ...pilotos.map((p) => {
+                      const t = melhorSetor(p, s)
+                      return t !== null && ref !== null ? t - ref : 0
+                    }),
+                  )
                   return (
                     <tr key={s}>
                       <td>Setor {s}</td>
@@ -114,7 +136,11 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
                         const gap = ref !== null ? t - ref : null
                         const pct = ref ? ((gap as number) / ref) * 100 : null
                         return (
-                          <td key={p.numero_carro} className={`num ${classeGap(gap)}`}>
+                          <td
+                            key={p.numero_carro}
+                            className={`num ${classeGap(gap)}`}
+                            style={{ background: fundoGap(gap, maxGapSetor) }}
+                          >
                             {formatarTempo(t)}
                             <div style={{ fontSize: '0.78rem' }}>
                               {gap === 0 ? 'referência' : `${formatarDelta(gap)} (${formatarPct(pct)})`}

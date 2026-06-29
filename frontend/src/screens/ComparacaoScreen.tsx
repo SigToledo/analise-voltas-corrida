@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import {
   CartesianGrid,
   Line,
@@ -8,13 +9,27 @@ import {
   YAxis,
 } from 'recharts'
 import { corDoPiloto } from '../cores'
-import { formatarDelta, formatarTempo } from '../format'
+import { formatarDelta, formatarTempo, formatarVelocidade } from '../format'
 import type { AnaliseSessao, MetricasPiloto } from '../types'
 
 interface Props {
   analise: AnaliseSessao
   selecionados: string[]
   aoAlternar: (numeroCarro: string) => void
+  aoVerGanharTempo: () => void
+}
+
+/** Acompanha a largura da janela para adaptar o gráfico em telas estreitas. */
+function useLarguraJanela(): number {
+  const [largura, setLargura] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1024,
+  )
+  useEffect(() => {
+    const aoRedimensionar = () => setLargura(window.innerWidth)
+    window.addEventListener('resize', aoRedimensionar)
+    return () => window.removeEventListener('resize', aoRedimensionar)
+  }, [])
+  return largura
 }
 
 const LIMITE_SELECAO = 4
@@ -24,7 +39,14 @@ const LIMITE_SELECAO = 4
  * Elemento dominante: gráfico de tempo por volta. Voltas de pit ou sem
  * leitura viram lacuna no gráfico (valor null) — nunca interpoladas.
  */
-export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
+export function ComparacaoScreen({
+  analise,
+  selecionados,
+  aoAlternar,
+  aoVerGanharTempo,
+}: Props) {
+  const estreito = useLarguraJanela() < 640
+
   // Pilotos ordenados por melhor volta (mais rápido primeiro). Quem não tem
   // volta válida vai para o fim.
   const pilotos = [...analise.pilotos].sort(ordenarPorMelhorVolta)
@@ -103,6 +125,7 @@ export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
               disabled={!sel && selecionados.length >= LIMITE_SELECAO}
             >
               <span className="nome">
+                {sel && <i className="ponto" style={{ background: cor }} />}
                 ({p.numero_carro}) {p.nome}
               </span>
               <span className="tempo num">{formatarTempo(p.melhor_volta_s)}</span>
@@ -110,6 +133,21 @@ export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
           )
         })}
       </div>
+
+      {/* Legenda cor → piloto (o gráfico sozinho não diz qual cor é quem). */}
+      {selecionados.length > 0 && (
+        <div className="legenda">
+          {selecionados.map((carro) => {
+            const p = analise.pilotos.find((x) => x.numero_carro === carro)
+            return (
+              <span key={carro}>
+                <i style={{ background: corDoPiloto(selecionados, carro) }} />(
+                {carro}) {p?.nome}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {/* Gráfico de tempo por volta */}
       {selecionados.length === 0 ? (
@@ -128,8 +166,8 @@ export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
                 stroke="var(--texto-fraco)"
                 domain={yDomain}
                 allowDataOverflow={temJanela}
-                width={92}
-                tick={{ fontSize: 13 }}
+                width={estreito ? 64 : 92}
+                tick={{ fontSize: estreito ? 11 : 13 }}
                 tickFormatter={(s) => formatarTempo(s as number)}
               />
               <Tooltip
@@ -167,8 +205,8 @@ export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
                 <th>Volta nº</th>
                 <th>Delta</th>
                 <th>Mediana</th>
-                <th>Consistência</th>
-                <th>SSTRAP</th>
+                <th>Consistência (s)</th>
+                <th>Vel. radar (km/h)</th>
               </tr>
             </thead>
             <tbody>
@@ -200,19 +238,21 @@ export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
                     <td className="num">
                       {p.consistencia_desvio_padrao_s === null
                         ? '—'
-                        : `${p.consistencia_desvio_padrao_s.toFixed(3)} s`}
+                        : p.consistencia_desvio_padrao_s.toFixed(3)}
                     </td>
-                    <td className="num">
-                      {p.melhor_sstrap_kmh === null
-                        ? '—'
-                        : p.melhor_sstrap_kmh.toFixed(1).replace('.', ',')}
-                    </td>
+                    <td className="num">{formatarVelocidade(p.melhor_sstrap_kmh)}</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
+
+        {selecionados.length > 0 && (
+          <button className="cta-ganhar" onClick={aoVerGanharTempo}>
+            Ver onde ganhar tempo →
+          </button>
+        )}
       </div>
     </div>
   )

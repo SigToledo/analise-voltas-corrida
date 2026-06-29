@@ -77,12 +77,57 @@
   font-size: 0.9rem;
 }
 
+/* Navegação: abas de tela separadas do botão destrutivo "Novo PDF". */
+.nav-tabs {
+  display: flex;
+  gap: 0.4rem;
+  background: var(--surface);
+  padding: 0.25rem;
+  border-radius: 10px;
+}
+.btn-perigo {
+  border-color: #5a2c2c;
+  color: #ffb3a8;
+}
+
+/* Legenda cor→piloto acima do gráfico. */
+.legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0.2rem 0 0.6rem;
+  font-size: 0.9rem;
+}
+.legenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.legenda i {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
 /* ---------- Chips de pilotos ---------- */
+/* Altura limitada e rolável para não empurrar o gráfico (elemento dominante)
+   para fora da tela quando há muitos pilotos. */
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-bottom: 1.2rem;
+  margin-bottom: 1rem;
+  max-height: 116px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.chip .ponto {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 0.4rem;
 }
 .chip {
   display: flex;
@@ -96,8 +141,9 @@
   font-weight: 600;
 }
 .chip .tempo {
-  font-size: 0.8rem;
-  color: var(--texto-fraco);
+  font-size: 0.95rem;
+  color: var(--texto);
+  font-weight: 600;
 }
 .chip.selecionado {
   border-width: 2px;
@@ -159,6 +205,15 @@ table.dados th {
 }
 .card-ideal .setores b {
   color: var(--texto);
+}
+
+.cta-ganhar {
+  background: var(--ref);
+  color: #04130b;
+  border-color: var(--ref);
+  font-weight: 700;
+  font-size: 1.02rem;
+  padding: 0.7em 1.3em;
 }
 
 .secao {
