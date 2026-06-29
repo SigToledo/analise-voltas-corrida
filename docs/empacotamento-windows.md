@@ -46,16 +46,38 @@ Em `frontend/src-tauri/target/release/bundle/`:
 
 E o executável solto em `frontend/src-tauri/target/release/` (binário `app.exe`).
 
-## IMPORTANTE — backend ainda não embutido (próxima etapa)
+## Backend embutido como sidecar (app standalone)
 
-Hoje o Tauri empacota apenas o **frontend**. O **backend FastAPI (Python)**, que
-faz o parsing do PDF e os cálculos, **não está dentro do executável**.
+O backend FastAPI (Python) é embutido no app como **sidecar**: um executável
+gerado com PyInstaller que o Tauri inicia junto com a janela e encerra quando
+o app fecha. Assim o usuário final só instala e abre — sem terminal, sem rodar
+servidor à mão.
 
-Consequência: para o app empacotado funcionar, o backend precisa estar rodando
-em `http://localhost:8000` (o frontend de produção chama esse endereço — ver
-`frontend/src/api.ts`). Em desenvolvimento, o proxy do Vite cuida disso.
+Como funciona:
+- `frontend/src/api.ts`: em produção o frontend fala com `http://localhost:8000`.
+- `tauri.conf.json` → `bundle.externalBin`: `binaries/analise-backend` (o Tauri
+  procura o arquivo com o sufixo do alvo, ex. `...-x86_64-pc-windows-msvc.exe`).
+- `src-tauri/src/lib.rs`: inicia o sidecar no `setup` e o mata no fechamento da
+  janela; também define `ANALISE_SIDECAR=1`.
+- `backend/run_server.py`: quando `ANALISE_SIDECAR=1`, vigia o stdin e se encerra
+  sozinho se o app morrer (inclusive em crash/force-kill), evitando processo
+  órfão segurando a porta 8000.
 
-Para um app 100% standalone (sem abrir terminal), a próxima etapa é embutir o
-backend como **sidecar**: gerar um `.exe` do backend com PyInstaller e declarar
-esse binário em `tauri.conf.json` (`bundle.externalBin`), fazendo o Tauri
-iniciá-lo junto com a janela. Isso ainda não está feito.
+### Gerar/atualizar o sidecar (sempre que o backend mudar)
+
+O binário do sidecar é um artefato de build e **não** vai para o Git (é grande).
+Regere-o a partir de `backend/` (com o venv do backend):
+
+```powershell
+# 1. Gera o .exe do backend (saída em backend/dist/analise-backend.exe)
+.\venv\Scripts\python.exe -m PyInstaller --onefile --name analise-backend `
+  --collect-all uvicorn --collect-all pdfplumber --collect-all pdfminer `
+  --collect-all fastapi --collect-submodules app --noconfirm run_server.py
+
+# 2. Copia para a pasta de binários do Tauri, COM o sufixo do alvo:
+Copy-Item .\dist\analise-backend.exe `
+  ..\frontend\src-tauri\binaries\analise-backend-x86_64-pc-windows-msvc.exe -Force
+```
+
+Depois rode `npx tauri build` em `frontend/`. Para o `tauri dev`, o sidecar
+também é iniciado automaticamente (precisa do binário já copiado em `binaries/`).

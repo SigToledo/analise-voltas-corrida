@@ -51,6 +51,12 @@ pnpm-debug.log*
 src-tauri/target/
 Cargo.lock
 
+# Sidecar do backend (gerado pelo PyInstaller) e artefatos do PyInstaller.
+# São artefatos de build — regerar com o passo documentado em
+# docs/empacotamento-windows.md. Grandes demais para versionar.
+frontend/src-tauri/binaries/
+*.spec
+
 
 # Pasta de rascunho/experimentos locais (scripts temporários de inspeção).
 .scratch/
