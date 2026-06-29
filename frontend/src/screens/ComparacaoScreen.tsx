@@ -48,6 +48,32 @@ export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
     dadosGrafico.push(ponto)
   }
 
+  // Escala do eixo Y focada nas voltas de RITMO. Sem isso, uma única volta
+  // lenta (tráfego/saída de box, 4-5 min) estica o eixo e espreme todas as
+  // voltas boas numa faixa ilegível no rodapé. Calculamos a janela só com
+  // voltas "limpas" (não-pit, completas e não marcadas como outlier); os
+  // pontos lentos continuam plotados (a linha sobe e sai pelo topo), mas a
+  // escala fica útil para comparar ritmo.
+  const temposLimpos: number[] = []
+  for (const carro of selecionados) {
+    const metr = analise.pilotos.find((p) => p.numero_carro === carro)
+    const outliers = new Set(metr?.voltas_outlier ?? [])
+    for (const v of analise.voltas_por_carro[carro] ?? []) {
+      const completa =
+        v.tempo_volta_s !== null &&
+        v.setor1_s !== null &&
+        v.setor2_s !== null &&
+        v.setor3_s !== null
+      if (!v.eh_volta_pit && completa && !outliers.has(v.numero_volta)) {
+        temposLimpos.push(v.tempo_volta_s as number)
+      }
+    }
+  }
+  const temJanela = temposLimpos.length > 0
+  const yDomain: [number, number] | ['auto', 'auto'] = temJanela
+    ? [Math.floor(Math.min(...temposLimpos)) - 1, Math.ceil(Math.max(...temposLimpos)) + 1]
+    : ['auto', 'auto']
+
   // Para a tabela de melhor volta: o mais rápido entre os SELECIONADOS.
   const melhoresSelecionados = selecionados
     .map((c) => analise.pilotos.find((p) => p.numero_carro === c))
@@ -91,7 +117,7 @@ export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
       ) : (
         <div style={{ width: '100%', height: 360 }}>
           <ResponsiveContainer>
-            <LineChart data={dadosGrafico} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+            <LineChart data={dadosGrafico} margin={{ top: 10, right: 24, bottom: 10, left: 16 }}>
               <CartesianGrid stroke="var(--linha)" strokeDasharray="3 3" />
               <XAxis
                 dataKey="volta"
@@ -100,8 +126,10 @@ export function ComparacaoScreen({ analise, selecionados, aoAlternar }: Props) {
               />
               <YAxis
                 stroke="var(--texto-fraco)"
-                domain={['auto', 'auto']}
-                width={64}
+                domain={yDomain}
+                allowDataOverflow={temJanela}
+                width={92}
+                tick={{ fontSize: 13 }}
                 tickFormatter={(s) => formatarTempo(s as number)}
               />
               <Tooltip
