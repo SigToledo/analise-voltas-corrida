@@ -280,5 +280,6 @@ def montar_analise_sessao(resultado: ResultadoParsingPDF) -> AnaliseSessao:
         pilotos=[calcular_metricas_piloto(p) for p in pilotos],
         volta_ideal_equipe=calcular_volta_ideal_equipe(pilotos),
         comparacao_setores=comparar_setores(pilotos),
+        voltas_por_carro={p.numero_carro: p.voltas for p in pilotos},
         avisos_parsing=resultado.avisos,
     )

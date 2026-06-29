@@ -1,0 +1,79 @@
+/* ---------------------------------------------------------------------------
+   Estilos globais. Prioridade: LEGIBILIDADE na garagem/pista (luz forte,
+   olhar rápido entre sessões). Tema escuro de alto contraste, fontes grandes,
+   números "tabulares" (todos os dígitos com a mesma largura) para os tempos
+   ficarem alinhados em colunas.
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Cores */
+  --bg: #0f1115;
+  --surface: #1a1d24;
+  --surface-2: #232732;
+  --linha: #313644;
+  --texto: #f2f4f8;
+  --texto-fraco: #9aa2b1;
+
+  /* Semântica de corrida */
+  --ref: #38e08b; /* mais rápido / referência */
+  --alerta: #ff7a45; /* maior gap / oportunidade */
+  --alerta-forte: #ff4d4d;
+  --pit: #6b7280; /* volta de box */
+  --sem-leitura: #6b7280; /* dado ausente */
+
+  /* Paleta de pilotos no gráfico (cores bem distintas) */
+  --p1: #4cc2ff;
+  --p2: #ffd23f;
+  --p3: #ff6ec7;
+  --p4: #9d8cff;
+
+  color-scheme: dark;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  color: var(--texto);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+h1, h2, h3 {
+  margin: 0 0 0.4em;
+  font-weight: 700;
+}
+
+/* Todos os tempos/números usam dígitos de largura fixa para alinhar colunas. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--linha);
+  background: var(--surface-2);
+  color: var(--texto);
+  border-radius: 8px;
+  padding: 0.55em 1em;
+}
+button:hover {
+  border-color: var(--texto-fraco);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Texto padrão para dado que o PDF não trouxe. Mesmo "vocabulário visual"
+   nas três telas: cinza + itálico. Nunca mostrar 0 no lugar. */
+.sem-leitura {
+  color: var(--sem-leitura);
+  font-style: italic;
+}

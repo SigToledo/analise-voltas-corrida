@@ -15,6 +15,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.models.lap_data import VoltaLeitura
+
 
 class MetricasPiloto(BaseModel):
     """Métricas individuais de um piloto na sessão."""
@@ -142,6 +144,14 @@ class AnaliseSessao(BaseModel):
     pilotos: list[MetricasPiloto] = Field(default_factory=list)
     volta_ideal_equipe: VoltaIdealEquipe
     comparacao_setores: list[ComparacaoSetor] = Field(default_factory=list)
+    voltas_por_carro: dict[str, list[VoltaLeitura]] = Field(
+        default_factory=dict,
+        description=(
+            "Voltas (dado bruto extraído) de cada piloto, indexadas pelo número do "
+            "carro. O frontend usa isso para o gráfico de tempo por volta. Voltas "
+            "sem leitura mantêm os campos em null — nunca interpolar no gráfico."
+        ),
+    )
     avisos_parsing: list[str] = Field(
         default_factory=list,
         description="Avisos do parser do PDF (dados que não puderam ser lidos com confiança).",
