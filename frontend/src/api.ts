@@ -1,5 +1,11 @@
 import type { AnaliseSessao } from './types'
 
+// Base da API. Em desenvolvimento usamos caminho relativo ("/analise"), que o
+// proxy do Vite encaminha para o backend. No app empacotado (Tauri) não há
+// proxy, então falamos direto com o backend local na porta 8000.
+// (Enquanto o backend não vira "sidecar", ele precisa estar rodando.)
+const API_BASE = import.meta.env.PROD ? 'http://localhost:8000' : ''
+
 /**
  * Envia o PDF para o backend e devolve a análise.
  *
@@ -13,7 +19,7 @@ export async function analisarPdf(arquivo: File): Promise<AnaliseSessao> {
 
   let resposta: Response
   try {
-    resposta = await fetch('/analise', { method: 'POST', body: form })
+    resposta = await fetch(`${API_BASE}/analise`, { method: 'POST', body: form })
   } catch {
     // Erro de rede: backend provavelmente não está rodando.
     throw new Error(
