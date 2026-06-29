@@ -89,6 +89,16 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
             )
           })}
         </div>
+        {/* Exclusões/avisos da volta ideal (ex.: setor sem leitura no grid).
+            Reforça a regra de não inventar dado: deixa explícito o que ficou
+            de fora do cálculo, em vez de mostrar um total "fechado" sem ressalva. */}
+        {ideal.avisos.length > 0 && (
+          <ul style={{ margin: '0.8rem 0 0', paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--texto-fraco)' }}>
+            {ideal.avisos.map((a, i) => (
+              <li key={i}>{a}</li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Mapa de gaps por setor entre os selecionados */}
