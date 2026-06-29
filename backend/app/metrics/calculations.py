@@ -30,8 +30,9 @@ DEFINIÇÕES (para os números terem significado claro):
 import statistics
 from typing import Optional
 
-from app.models.lap_data import PilotoLaps
+from app.models.lap_data import PilotoLaps, ResultadoParsingPDF
 from app.models.metrics import (
+    AnaliseSessao,
     ComparacaoSetor,
     DonoDoSetor,
     GapSetorPiloto,
@@ -86,9 +87,15 @@ def calcular_metricas_piloto(piloto: PilotoLaps) -> MetricasPiloto:
     validas = _voltas_validas(piloto)
     tempos_validos = [v.tempo_volta_s for v in validas]
 
-    # Melhor volta: menor tempo entre as voltas válidas.
-    melhor_volta = min(tempos_validos) if tempos_validos else None
-    if melhor_volta is None:
+    # Melhor volta: menor tempo entre as voltas válidas. Guardamos também o
+    # NÚMERO da volta em que ela ocorreu (equivale à coluna NA do oficial).
+    if validas:
+        volta_mais_rapida = min(validas, key=lambda v: v.tempo_volta_s)
+        melhor_volta = volta_mais_rapida.tempo_volta_s
+        numero_volta_melhor = volta_mais_rapida.numero_volta
+    else:
+        melhor_volta = None
+        numero_volta_melhor = None
         avisos.append("Sem voltas válidas (não-pit, com os 3 setores) — sem melhor volta.")
 
     # Melhores setores do piloto.
@@ -123,10 +130,34 @@ def calcular_metricas_piloto(piloto: PilotoLaps) -> MetricasPiloto:
         desvio = None
         avisos.append("Menos de 2 voltas válidas — sem desvio padrão (consistência).")
 
+    # SSTRAP (velocidade de radar) sobre voltas NÃO-pit com leitura: maior
+    # valor = ponta; média = velocidade típica. Box laps ficam de fora.
+    sstraps = [
+        v.velocidade_radar_kmh
+        for v in piloto.voltas
+        if not v.eh_volta_pit and v.velocidade_radar_kmh is not None
+    ]
+    melhor_sstrap = max(sstraps) if sstraps else None
+    sstrap_medio = statistics.mean(sstraps) if sstraps else None
+    if not sstraps:
+        avisos.append("Sem leitura de radar (SSTRAP) em voltas não-pit.")
+
+    # Outliers de tráfego/bandeira: voltas válidas acima de mediana + 1,5x
+    # desvio. Só sinalizamos (não apagamos): a mediana é robusta e quase não
+    # sofre, mas o engenheiro precisa saber quais voltas "sujas" existem.
+    voltas_outlier: list[int] = []
+    if mediana is not None and desvio is not None:
+        limite = mediana + 1.5 * desvio
+        voltas_outlier = [v.numero_volta for v in validas if v.tempo_volta_s > limite]
+
     return MetricasPiloto(
         numero_carro=piloto.numero_carro,
         nome=piloto.nome,
         melhor_volta_s=melhor_volta,
+        numero_volta_melhor=numero_volta_melhor,
+        melhor_sstrap_kmh=melhor_sstrap,
+        sstrap_medio_kmh=sstrap_medio,
+        voltas_outlier=voltas_outlier,
         melhor_volta_teorica_s=teorica,
         gap_real_para_teorica_s=gap,
         mediana_voltas_limpas_s=mediana,
@@ -234,3 +265,20 @@ def comparar_setores(pilotos: list[PilotoLaps]) -> list[ComparacaoSetor]:
         )
 
     return comparacoes
+
+
+def montar_analise_sessao(resultado: ResultadoParsingPDF) -> AnaliseSessao:
+    """
+    Junta tudo numa única resposta para o frontend: métricas de cada piloto,
+    a volta ideal da equipe e a comparação setor a setor de TODO o grid (o
+    frontend filtra os pilotos que quiser mostrar).
+    """
+    pilotos = resultado.pilotos
+    return AnaliseSessao(
+        arquivo_origem=resultado.arquivo_origem,
+        num_pilotos=len(pilotos),
+        pilotos=[calcular_metricas_piloto(p) for p in pilotos],
+        volta_ideal_equipe=calcular_volta_ideal_equipe(pilotos),
+        comparacao_setores=comparar_setores(pilotos),
+        avisos_parsing=resultado.avisos,
+    )

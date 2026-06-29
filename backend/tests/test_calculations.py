@@ -96,6 +96,34 @@ def test_voltas_validas_excluem_pit_e_incompletas(pilotos):
     assert m.mediana_voltas_limpas_s is not None
 
 
+# Coluna "NA" do QualifyReduced = número da volta da melhor marca.
+NA_OFICIAL = {
+    "171": 10, "411": 9, "197": 3, "82": 10, "98": 9, "899": 3, "11": 3,
+    "96": 10, "15": 4, "4": 4, "47": 6, "500": 3, "19": 3, "113": 7, "91": 10,
+    "328": 7, "225": 10, "707": 7, "25": 3, "66": 3, "122": 6, "38": 7,
+    "18": 3, "422": 8, "55": 9, "8": 2,
+}
+
+
+def test_numero_da_melhor_volta_bate_com_NA(pilotos):
+    """O número da volta da melhor marca deve bater com a coluna NA oficial."""
+    por_carro = {p.numero_carro: p for p in pilotos}
+    for carro, na in NA_OFICIAL.items():
+        m = calcular_metricas_piloto(por_carro[carro])
+        assert m.numero_volta_melhor == na, carro
+
+
+def test_sstrap_e_outliers_ljose(pilotos):
+    """SSTRAP de L.JOSE: melhor 184.3 km/h (volta 4). A volta 2 (com tráfego)
+    deve ser sinalizada como outlier, sem ser removida da contagem de válidas."""
+    ljose = next(p for p in pilotos if p.numero_carro == "171")
+    m = calcular_metricas_piloto(ljose)
+    assert m.melhor_sstrap_kmh == pytest.approx(184.3)
+    assert m.sstrap_medio_kmh is not None
+    assert 2 in m.voltas_outlier
+    assert m.num_voltas_limpas == 5  # outlier sinalizado, não removido
+
+
 def test_volta_ideal_equipe(pilotos):
     """A volta ideal soma os melhores setores do grid todo e deve ser <= a
     melhor volta do piloto mais rápido da sessão."""

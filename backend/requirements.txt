@@ -14,5 +14,9 @@ fastapi==0.138.2
 # Servidor para rodar o FastAPI em desenvolvimento.
 uvicorn==0.49.0
 
-# Testes.
+# Necessário para receber upload de arquivo (UploadFile) no FastAPI.
+python-multipart==0.0.32
+
+# Testes (httpx é usado pelo TestClient do FastAPI).
 pytest==9.1.1
+httpx==0.28.1
