@@ -1,7 +1,7 @@
 # Wireframes e fluxos — telas principais
 
-Fase de design, anterior à implementação. Nenhum código foi escrito a partir
-deste documento ainda.
+Documento de design das telas, anterior à implementação: hierarquia visual,
+fluxo de interação e estados (carregando, erro, dados faltando) de cada tela.
 
 ---
 
