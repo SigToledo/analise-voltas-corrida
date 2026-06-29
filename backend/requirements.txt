@@ -1,0 +1,18 @@
+# Dependências do backend (FastAPI + parsing de PDF).
+# Versões fixadas para o ambiente ser reproduzível.
+
+# Leitura de PDF com posição (coordenadas) de cada texto — essencial para
+# associar corretamente cada valor à sua coluna no relatório de cronometragem.
+pdfplumber==0.11.10
+
+# Modelagem e validação dos dados extraídos. O FastAPI também usa Pydantic.
+pydantic==2.13.4
+
+# Framework do backend (API HTTP). Ainda sem rotas de upload — só a base.
+fastapi==0.138.2
+
+# Servidor para rodar o FastAPI em desenvolvimento.
+uvicorn==0.49.0
+
+# Testes.
+pytest==9.1.1
