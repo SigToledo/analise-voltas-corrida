@@ -74,6 +74,10 @@ export function UploadScreen({ aoConcluir }: Props) {
           style={{ display: 'none' }}
           onChange={(e) => {
             const arquivo = e.target.files?.[0]
+            // Limpa o valor do input: o navegador só dispara onChange quando o
+            // valor MUDA, então sem isso escolher o MESMO arquivo de novo (ex.
+            // depois de um erro) não faria nada.
+            e.target.value = ''
             if (arquivo) processar(arquivo)
           }}
         />
@@ -94,7 +98,13 @@ export function UploadScreen({ aoConcluir }: Props) {
           type="file"
           accept="application/pdf"
           style={{ display: 'none' }}
-          onChange={(e) => setResumo(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            const arquivo = e.target.files?.[0] ?? null
+            // Mesmo motivo do input principal: sem limpar o valor, remover o
+            // resumo e escolher o MESMO arquivo de novo não dispara onChange.
+            e.target.value = ''
+            setResumo(arquivo)
+          }}
         />
       </div>
 
