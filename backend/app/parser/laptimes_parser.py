@@ -488,6 +488,23 @@ def _extrair_voltas_do_bloco(
     return voltas
 
 
+# Palavras que marcam o começo do RODAPÉ do relatório (assinaturas, crédito
+# do sistema, data de impressão). Tudo abaixo delas não é dado de volta.
+_ANCORAS_RODAPE = {"Chief", "Orbits", "www.mylaps.com", "Printed:"}
+
+
+def _limite_inferior_tabela(palavras: list[_Palavra]) -> float:
+    """
+    Devolve o `top` onde o rodapé da página começa. A área útil da tabela é
+    o que está ACIMA disso. Sem esse corte, o texto do rodapé ("Chief of
+    Timing & Scoring"...) cai dentro do intervalo vertical do último piloto
+    de cada coluna e vira uma enxurrada de avisos de "volta ilegível".
+    Se nenhuma âncora for encontrada, não corta nada (infinito).
+    """
+    tops = [p.top for p in palavras if p.texto in _ANCORAS_RODAPE]
+    return min(tops) if tops else float("inf")
+
+
 def _topo_do_cabecalho_tabela(palavras: list[_Palavra]) -> float | None:
     """
     Devolve o `top` (altura) da linha de cabeçalho da tabela ("Lap Lap Tm S1
@@ -547,6 +564,11 @@ def parse_laptimes_pdf(caminho_pdf: str) -> ResultadoParsingPDF:
             if not palavras:
                 avisos.append(f"Página {indice_pagina + 1}: nenhum texto extraído.")
                 continue
+
+            # Só a área da tabela interessa: corta o rodapé fora antes de
+            # qualquer coisa (assinaturas, "Printed:", crédito do sistema).
+            limite_rodape = _limite_inferior_tabela(palavras)
+            palavras = [p for p in palavras if p.top < limite_rodape]
 
             linhas_logicas = _agrupar_por_linha_logica(palavras)
             posicoes_colunas = _detectar_posicoes_colunas(palavras)
