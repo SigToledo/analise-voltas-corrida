@@ -1,11 +1,16 @@
-# Plano — App mobile (Android primeiro, iOS depois)
+# Plano — App mobile (PWA primeiro; nativo só se precisar)
 
 Decisões tomadas (05/07/2026):
 - **Offline é obrigatório**: o app precisa analisar o PDF na pista, sem sinal.
-- **Alvos**: Android e iPhone. **Ordem**: Android primeiro (APK direto, custo
-  zero); iOS depois, pois exige Mac para compilar e conta Apple Developer
-  (US$ 99/ano) para instalação prática fora da loja.
-- **Distribuição**: uso próprio/equipe (sem lojas por enquanto).
+- **Aparelho principal: iPhone** (+ Androids da equipe).
+- **Distribuição**: uso próprio/equipe (sem lojas).
+- **Rota escolhida: PWA instalável.** App nativo iOS exigiria Mac para
+  compilar e conta Apple Developer (US$ 99/ano) para não expirar em 7 dias —
+  inviável para o caso de uso. O PWA instala pelo Safari ("Adicionar à Tela
+  de Início"), funciona offline via service worker, roda igual no Android da
+  equipe e custa zero. Limitações aceitas: sem "compartilhar direto do
+  WhatsApp" no iOS (salva em Arquivos e abre no app) e o cache pode ser
+  limpo pelo sistema após longa inatividade (basta reabrir com internet).
 
 ## A decisão de arquitetura
 
@@ -39,26 +44,20 @@ reproduzir EXATAMENTE o resultado do Python:
 
 ## Fases
 
-- **M0 — Gabarito** ✅ decidido: gerar os golden files a partir do backend
-  Python atual (script pequeno; os JSONs ficam fora do Git, junto de
-  samples/, por conterem dados reais de treino).
+- **M0 — Gabarito**: gerar os golden files a partir do backend Python atual
+  (script em backend/scripts/gerar_gabarito.py; os JSONs ficam em
+  samples/gabarito/, fora do Git por conterem dados reais de treino).
 - **M1 — Motor TS**: portar parser (Laptimes, detecção de tipo, resumo
   Qualify) e métricas; suíte de testes (vitest) contra o gabarito. Sem tela
   nova. É a fase mais longa.
-- **M2 — App Android**: `tauri android init`; telas React atuais adaptadas
-  para toque/tela estreita (chips, tabelas com scroll horizontal já
-  previstos); seleção de arquivo pelo seletor do Android; gerar APK e
-  instalar direto no aparelho.
-- **M3 — Refinos de pista**: receber PDF via "Compartilhar" do WhatsApp/
-  e-mail; histórico de sessões no aparelho; comparação entre sessões.
-- **M4 — iOS** (quando houver Mac + conta Apple): mesmo código, build iOS
-  via Tauri; distribuição por TestFlight.
-
-## Pré-requisitos técnicos (Android, fase M2)
-
-- Android Studio + SDK/NDK (instalação grande, ~10 GB).
-- Rust targets Android (`rustup target add aarch64-linux-android` etc.).
-- Java 17. Tudo em máquina Windows atual — sem custo.
+- **M2 — PWA instalável**: manifest + service worker (vite-plugin-pwa) no
+  frontend, análise 100% no aparelho (o PDF nunca sai do celular);
+  hospedagem estática gratuita (Vercel/Netlify); instalar no iPhone pelo
+  Safari e nos Androids da equipe pelo Chrome.
+- **M3 — Refinos de pista**: histórico de sessões no aparelho (IndexedDB),
+  usabilidade de toque, revisão do heatmap em tela estreita.
+- **M4 — Nativo (opcional)**: Tauri iOS/Android, só se surgir necessidade
+  real (ex.: compartilhar direto do WhatsApp). Exige Mac + conta Apple paga.
 
 ## Riscos conhecidos
 

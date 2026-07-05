@@ -72,6 +72,9 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# --- Dados locais do projeto (PDFs e sessões processadas) ---
+# --- Dados locais do projeto (PDFs, gabaritos e sessões processadas) ---
+# samples/ inteiro: os PDFs de treino E os gabaritos JSON gerados deles
+# contêm dados reais de cronometragem — nada disso vai para o Git.
 *.pdf
+/samples/
 /data/
