@@ -16,13 +16,13 @@ function melhorSetor(p: MetricasPiloto, setor: number): number | null {
   return p.melhor_setor3_s
 }
 
-/** Classe de cor do TEXTO pela magnitude do gap (maior gap = mais "quente"). */
+/**
+ * Cor do TEXTO na célula de gap: só a referência ganha cor (verde); as demais
+ * ficam com texto claro neutro. A intensidade da oportunidade é comunicada
+ * pelo FUNDO (fundoGap) — texto vermelho sobre fundo vermelho era ilegível.
+ */
 function classeGap(gap: number | null): string {
-  if (gap === null) return ''
-  if (gap <= 0.001) return 'gap-0'
-  if (gap < 0.15) return 'gap-1'
-  if (gap < 0.4) return 'gap-2'
-  return 'gap-3'
+  return gap !== null && gap <= 0.001 ? 'gap-0' : ''
 }
 
 /**

@@ -161,13 +161,13 @@
 }
 
 /* ---------- Chips de pilotos ---------- */
+/* Todos os pilotos visíveis de uma vez (sem scroll): procurar um piloto
+   atrás de barra de rolagem custa mais que uma grade compacta. */
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.35rem;
   margin-bottom: 1rem;
-  max-height: 112px;
-  overflow-y: auto;
   padding: 2px;
 }
 .chip {
@@ -175,13 +175,13 @@
   flex-direction: column;
   align-items: flex-start;
   border-radius: 3px;
-  padding: 0.35rem 0.7rem;
+  padding: 0.28rem 0.55rem;
   line-height: 1.2;
   background: var(--painel);
 }
 .chip .nome {
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   display: flex;
   align-items: center;
 }
@@ -327,11 +327,9 @@ table.dados th {
   padding: 0.65em 1.4em;
 }
 
-/* Célula de gap: texto pela convenção, fundo pelo tamanho da oportunidade. */
+/* Célula de gap: a intensidade fica no FUNDO (mapa de calor); o texto é
+   sempre claro para nunca competir com o fundo. Só a referência tem cor. */
 .gap-0 { color: var(--verde); font-weight: 600; }
-.gap-1 { color: var(--giz); }
-.gap-2 { color: var(--ambar); }
-.gap-3 { color: var(--vermelho); font-weight: 600; }
 
 .spinner {
   margin: 10vh auto 1rem;

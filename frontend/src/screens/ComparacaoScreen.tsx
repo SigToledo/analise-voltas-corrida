@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
+  Scatter,
   Tooltip,
   XAxis,
   YAxis,
@@ -95,9 +96,32 @@ export function ComparacaoScreen({
     }
   }
   const temJanela = temposLimpos.length > 0
+  // Reserva uma faixa no rodapé do gráfico para os marcadores de box
+  // (uma "linha" por piloto, para não se sobreporem).
+  const folgaMarcadores = temJanela ? 0.7 + selecionados.length * 0.55 : 0
   const yDomain: [number, number] | ['auto', 'auto'] = temJanela
-    ? [Math.floor(Math.min(...temposLimpos)) - 1, Math.ceil(Math.max(...temposLimpos)) + 1]
+    ? [
+        Math.floor(Math.min(...temposLimpos)) - 1 - folgaMarcadores,
+        Math.ceil(Math.max(...temposLimpos)) + 1,
+      ]
     : ['auto', 'auto']
+
+  // Marcadores de box por piloto: "P" na volta em que ENTROU no box (volta
+  // 'p' do PDF) e "S" na volta de SAÍDA. Essas voltas não têm tempo confiável
+  // (por isso a linha abre lacuna), mas o momento em que aconteceram é
+  // informação real — o marcador mostra o quando, sem inventar o quanto.
+  const marcadoresBox = temJanela
+    ? selecionados.map((carro, i) => ({
+        carro,
+        pontos: (analise.voltas_por_carro[carro] ?? [])
+          .filter((v) => v.eh_volta_pit || v.eh_volta_saida_box)
+          .map((v) => ({
+            volta: v.numero_volta,
+            nivel: (yDomain[0] as number) + 0.55 + i * 0.55,
+            simbolo: v.eh_volta_pit ? 'P' : 'S',
+          })),
+      }))
+    : []
 
   // Para a tabela de melhor volta: o mais rápido entre os SELECIONADOS.
   const melhoresSelecionados = selecionados
@@ -159,10 +183,13 @@ export function ComparacaoScreen({
       ) : (
         <div style={{ width: '100%', height: 360 }}>
           <ResponsiveContainer>
-            <LineChart data={dadosGrafico} margin={{ top: 10, right: 24, bottom: 10, left: 16 }}>
+            <ComposedChart data={dadosGrafico} margin={{ top: 10, right: 24, bottom: 10, left: 16 }}>
               <CartesianGrid stroke="var(--risco)" strokeDasharray="3 3" />
               <XAxis
                 dataKey="volta"
+                type="number"
+                domain={[1, maxVolta]}
+                ticks={Array.from({ length: maxVolta }, (_, i) => i + 1)}
                 stroke="var(--giz-fraco)"
                 label={{ value: 'Volta', position: 'insideBottom', offset: -2, fill: 'var(--giz-fraco)' }}
               />
@@ -192,9 +219,40 @@ export function ComparacaoScreen({
                   isAnimationActive={false}
                 />
               ))}
-            </LineChart>
+              {/* Marcadores de box: letra "P" (entrou) / "S" (saindo) na cor
+                  do piloto, numa faixa própria no rodapé do gráfico. */}
+              {marcadoresBox.map(({ carro, pontos }) => (
+                <Scatter
+                  key={`box-${carro}`}
+                  data={pontos}
+                  dataKey="nivel"
+                  isAnimationActive={false}
+                  tooltipType="none"
+                  shape={(props: { cx?: number; cy?: number; payload?: { simbolo?: string } }) => (
+                    <text
+                      x={props.cx}
+                      y={(props.cy ?? 0) + 4}
+                      textAnchor="middle"
+                      fontSize={11}
+                      fontWeight={700}
+                      fontFamily="var(--tipo-tempo)"
+                      fill={corDoPiloto(selecionados, carro)}
+                    >
+                      {props.payload?.simbolo}
+                    </text>
+                  )}
+                />
+              ))}
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
+      )}
+
+      {selecionados.length > 0 && temJanela && (
+        <p className="status" style={{ textAlign: 'left', fontSize: '0.82rem', marginTop: 0 }}>
+          Na faixa de baixo: <b>P</b> = volta em que entrou no box · <b>S</b> = volta de saída do
+          box (tempos dessas voltas não contam na análise).
+        </p>
       )}
 
       {/* Tabela de melhor volta com delta para o mais rápido entre selecionados */}

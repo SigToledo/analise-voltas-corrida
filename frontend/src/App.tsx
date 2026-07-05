@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import './App.css'
 import { ComparacaoScreen } from './screens/ComparacaoScreen'
 import { GanharTempoScreen } from './screens/GanharTempoScreen'
@@ -32,6 +32,24 @@ export default function App() {
         : [...atual, numeroCarro],
     )
   }
+
+  // A ordem de exibição NUNCA é a ordem do clique: os selecionados aparecem
+  // sempre na posição que fizeram na sessão (melhor volta primeiro). Isso
+  // também estabiliza as cores: o mais rápido é sempre a 1ª cor, e assim
+  // por diante — legenda, tabelas e gaps ficam na mesma ordem do resultado.
+  const selecionadosOrdenados = useMemo(() => {
+    if (!analise) return selecionados
+    const melhorPorCarro = new Map(
+      analise.pilotos.map((p) => [p.numero_carro, p.melhor_volta_s]),
+    )
+    return [...selecionados].sort((a, b) => {
+      const ta = melhorPorCarro.get(a) ?? null
+      const tb = melhorPorCarro.get(b) ?? null
+      if (ta === null) return 1
+      if (tb === null) return -1
+      return ta - tb
+    })
+  }, [analise, selecionados])
 
   // Sem análise ainda: só a tela de upload.
   if (!analise) {
@@ -122,12 +140,12 @@ export default function App() {
       {tela === 'comparacao' && (
         <ComparacaoScreen
           analise={analise}
-          selecionados={selecionados}
+          selecionados={selecionadosOrdenados}
           aoAlternar={alternarSelecionado}
           aoVerGanharTempo={() => setTela('ganhar')}
         />
       )}
-      {tela === 'ganhar' && <GanharTempoScreen analise={analise} selecionados={selecionados} />}
+      {tela === 'ganhar' && <GanharTempoScreen analise={analise} selecionados={selecionadosOrdenados} />}
     </div>
   )
 }
