@@ -21,5 +21,8 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Testes rodam pelo vitest (que tem os tipos de Node); ficam fora do
+  // build do app para o tsc não exigir @types/node no bundle do navegador.
+  "exclude": ["src/**/*.test.ts"]
 }
