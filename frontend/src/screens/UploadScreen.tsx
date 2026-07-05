@@ -7,21 +7,23 @@ interface Props {
 }
 
 /**
- * Tela 1 — Upload do PDF de treino.
- * Única ação possível: escolher/arrastar o PDF. Estados: carregando, erro
- * (PDF não reconhecido) e aviso parcial (parsing trouxe avisos).
+ * Tela 1 — Entrada dos relatórios da sessão.
+ * O Laptimes é obrigatório (é dele que saem as voltas). O resumo
+ * QualifyReduced é opcional e acrescenta as classes (ELITE/MASTER).
  */
 export function UploadScreen({ aoConcluir }: Props) {
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [arrastando, setArrastando] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [resumo, setResumo] = useState<File | null>(null)
+  const inputPrincipal = useRef<HTMLInputElement>(null)
+  const inputResumo = useRef<HTMLInputElement>(null)
 
   async function processar(arquivo: File) {
     setErro(null)
     setCarregando(true)
     try {
-      const analise = await analisarPdf(arquivo)
+      const analise = await analisarPdf(arquivo, resumo)
       aoConcluir(analise)
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro desconhecido ao analisar o PDF.')
@@ -34,45 +36,72 @@ export function UploadScreen({ aoConcluir }: Props) {
     return (
       <div>
         <div className="spinner" />
-        <p className="status">Lendo o PDF e calculando as métricas…</p>
+        <p className="status">Lendo os relatórios e calculando as métricas…</p>
       </div>
     )
   }
 
   return (
-    <div
-      className={`upload-area${arrastando ? ' arrastando' : ''}`}
-      onDragOver={(e) => {
-        e.preventDefault()
-        setArrastando(true)
-      }}
-      onDragLeave={() => setArrastando(false)}
-      onDrop={(e) => {
-        e.preventDefault()
-        setArrastando(false)
-        const arquivo = e.dataTransfer.files?.[0]
-        if (arquivo) processar(arquivo)
-      }}
-    >
-      <h1>Análise de Voltas</h1>
-      <p>Arraste o PDF do treino aqui ou</p>
-      <button onClick={() => inputRef.current?.click()}>Selecionar PDF do treino</button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="application/pdf"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const arquivo = e.target.files?.[0]
+    <div className="upload-wrap">
+      <h1 className="upload-titulo">Análise de voltas</h1>
+      <p className="upload-sub">
+        Do relatório de cronometragem ao ponto da pista onde dá para ganhar tempo.
+      </p>
+
+      <div
+        className={`upload-area${arrastando ? ' arrastando' : ''}`}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setArrastando(true)
+        }}
+        onDragLeave={() => setArrastando(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setArrastando(false)
+          const arquivo = e.dataTransfer.files?.[0]
           if (arquivo) processar(arquivo)
         }}
-      />
-      <p className="dica">Use o relatório "Laptimes" exportado do cronômetro (Orbits / MyLaps).</p>
+      >
+        <div className="rotulo">Relatório Laptimes — obrigatório</div>
+        <p style={{ margin: '0 0 0.9rem' }}>
+          Solte aqui o PDF de voltas do treino (Orbits / MyLaps), ou
+        </p>
+        <button onClick={() => inputPrincipal.current?.click()}>Escolher o PDF de voltas</button>
+        <input
+          ref={inputPrincipal}
+          type="file"
+          accept="application/pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const arquivo = e.target.files?.[0]
+            if (arquivo) processar(arquivo)
+          }}
+        />
+      </div>
+
+      <div className="upload-resumo">
+        <span>
+          Resumo QualifyReduced — opcional, acrescenta as classes e a posição oficial.
+        </span>
+        {resumo ? (
+          <span className="ok num">{resumo.name}</span>
+        ) : (
+          <button onClick={() => inputResumo.current?.click()}>Adicionar resumo</button>
+        )}
+        {resumo && <button onClick={() => setResumo(null)}>Remover</button>}
+        <input
+          ref={inputResumo}
+          type="file"
+          accept="application/pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => setResumo(e.target.files?.[0] ?? null)}
+        />
+      </div>
 
       {erro && (
         <div className="erro-box">
-          <strong>Não foi possível ler este PDF.</strong>
-          <div style={{ marginTop: '0.4rem' }}>{erro}</div>
+          <b>O arquivo não pôde ser usado.</b>
+          <div style={{ marginTop: '0.35rem' }}>{erro}</div>
         </div>
       )}
     </div>

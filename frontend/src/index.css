@@ -1,37 +1,52 @@
 /* ---------------------------------------------------------------------------
-   Estilos globais. Prioridade: LEGIBILIDADE na garagem/pista (luz forte,
-   olhar rápido entre sessões). Tema escuro de alto contraste, fontes grandes,
-   números "tabulares" (todos os dígitos com a mesma largura) para os tempos
-   ficarem alinhados em colunas.
+   Direção visual: MONITOR DE CRONOMETRAGEM.
+   O app vive no mundo da telinha de timing (Orbits) e do pit wall, e o visual
+   fala essa língua: fundo azul-asfalto de monitor, display condensado de
+   sinalização de pista, tempos SEMPRE em monoespaçada tabular, e a convenção
+   de cores de setor que todo engenheiro reconhece:
+     roxo  = melhor da sessão (absoluto)
+     verde = melhor pessoal / referência entre selecionados
+     âmbar = box / atenção        vermelho = gap alto
    --------------------------------------------------------------------------- */
 
+@import '@fontsource/barlow-condensed/500.css';
+@import '@fontsource/barlow-condensed/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
 :root {
-  /* Cores */
-  --bg: #0f1115;
-  --surface: #1a1d24;
-  --surface-2: #232732;
-  --linha: #313644;
-  --texto: #f2f4f8;
-  --texto-fraco: #9aa2b1;
+  /* Pista */
+  --pista: #10151d;        /* fundo — asfalto sob luz de vapor de sódio */
+  --painel: #151c27;       /* superfícies */
+  --painel-2: #1b2432;
+  --risco: #293446;        /* linhas divisórias */
+  --giz: #e9edf3;          /* texto principal */
+  --giz-fraco: #8a97ab;
 
-  /* Semântica de corrida */
-  --ref: #38e08b; /* mais rápido / referência */
-  --alerta: #ff7a45; /* maior gap / oportunidade */
-  --alerta-forte: #ff4d4d;
-  --pit: #6b7280; /* volta de box */
-  --sem-leitura: #6b7280; /* dado ausente */
+  /* Convenção de cronometragem */
+  --roxo: #b48cff;         /* melhor da sessão */
+  --roxo-fundo: rgba(148, 104, 255, 0.16);
+  --verde: #46d381;        /* melhor pessoal / referência */
+  --verde-fundo: rgba(70, 211, 129, 0.13);
+  --ambar: #f2b23e;        /* box / atenção */
+  --vermelho: #ef5350;     /* gap alto */
 
-  /* Paleta de pilotos no gráfico (cores bem distintas) */
-  --p1: #4cc2ff;
-  --p2: #ffd23f;
-  --p3: #ff6ec7;
-  --p4: #9d8cff;
+  /* Cores das linhas de piloto no gráfico */
+  --p1: #58b6ff;
+  --p2: #ffd24d;
+  --p3: #ff7ab0;
+  --p4: #7ee0c2;
+
+  /* Tipos */
+  --tipo-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --tipo-corpo: 'Segoe UI', system-ui, sans-serif;
+  --tipo-tempo: 'IBM Plex Mono', 'Consolas', monospace;
 
   color-scheme: dark;
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-  font-size: 17px;
-  color: var(--texto);
-  background: var(--bg);
+  font-family: var(--tipo-corpo);
+  font-size: 16px;
+  color: var(--giz);
+  background: var(--pista);
 }
 
 * {
@@ -40,40 +55,57 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--pista);
 }
 
-h1, h2, h3 {
-  margin: 0 0 0.4em;
+h1,
+h2,
+h3 {
+  font-family: var(--tipo-display);
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.4em;
 }
 
-/* Todos os tempos/números usam dígitos de largura fixa para alinhar colunas. */
+/* Todo tempo/valor numérico do app usa a mono tabular — coluna alinha,
+   centésimo com centésimo, como numa torre de tempos. */
 .num {
+  font-family: var(--tipo-tempo);
   font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
+  font-size: 0.94em;
 }
 
 button {
   font: inherit;
   cursor: pointer;
-  border: 1px solid var(--linha);
-  background: var(--surface-2);
-  color: var(--texto);
-  border-radius: 8px;
-  padding: 0.55em 1em;
+  border: 1px solid var(--risco);
+  background: var(--painel-2);
+  color: var(--giz);
+  border-radius: 3px;
+  padding: 0.5em 1em;
 }
 button:hover {
-  border-color: var(--texto-fraco);
+  border-color: var(--giz-fraco);
+}
+button:focus-visible {
+  outline: 2px solid var(--roxo);
+  outline-offset: 1px;
 }
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* Texto padrão para dado que o PDF não trouxe. Mesmo "vocabulário visual"
-   nas três telas: cinza + itálico. Nunca mostrar 0 no lugar. */
+/* Dado que o PDF não trouxe: cinza, itálico, nunca zero no lugar. */
 .sem-leitura {
-  color: var(--sem-leitura);
+  color: var(--giz-fraco);
   font-style: italic;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

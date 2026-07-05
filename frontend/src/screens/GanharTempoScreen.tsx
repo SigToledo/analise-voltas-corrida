@@ -33,9 +33,9 @@ function classeGap(gap: number | null): string {
  */
 function fundoGap(gap: number | null, maxGapSetor: number): string {
   if (gap === null) return 'transparent'
-  if (gap <= 0.001) return 'rgba(56, 224, 139, 0.16)' // referência (mais rápido)
+  if (gap <= 0.001) return 'var(--verde-fundo)' // referência (mais rápido do grupo)
   const razao = maxGapSetor > 0 ? Math.min(1, gap / maxGapSetor) : 0
-  return `rgba(255, 90, 60, ${0.14 + 0.46 * razao})`
+  return `rgba(239, 83, 80, ${0.12 + 0.42 * razao})`
 }
 
 /**
@@ -63,7 +63,7 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
     <div>
       {/* Card volta ideal da equipe */}
       <div className="card-ideal">
-        <div style={{ color: 'var(--texto-fraco)', fontSize: '0.9rem' }}>Volta ideal da equipe</div>
+        <div className="rotulo">Volta ideal da equipe · melhores setores do grid</div>
         {ideal.total_s === null ? (
           <div className="sem-leitura" style={{ fontSize: '1.4rem' }}>
             Não foi possível montar a volta ideal (algum setor sem leitura no grid).
@@ -93,7 +93,7 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
             Reforça a regra de não inventar dado: deixa explícito o que ficou
             de fora do cálculo, em vez de mostrar um total "fechado" sem ressalva. */}
         {ideal.avisos.length > 0 && (
-          <ul style={{ margin: '0.8rem 0 0', paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--texto-fraco)' }}>
+          <ul style={{ margin: '0.8rem 0 0', paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--giz-fraco)' }}>
             {ideal.avisos.map((a, i) => (
               <li key={i}>{a}</li>
             ))}

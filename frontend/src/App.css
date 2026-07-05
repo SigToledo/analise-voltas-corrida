@@ -1,102 +1,219 @@
-/* Layout do app e estilos das três telas. */
+/* Layout do app — ver a direção visual em index.css. */
 
 .app {
-  max-width: 1100px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 1.2rem 1.2rem 4rem;
+  padding: 0 1.2rem 4rem;
 }
 
-/* Barra de topo: nome do arquivo + navegação entre telas. */
+/* ---------- Faixa de sessão (assinatura visual) ----------
+   Reproduz o cabeçalho de um monitor de cronometragem: evento, pista,
+   sessão e data extraídos do próprio PDF, entre dois fios duplos. */
+.faixa-sessao {
+  border-top: 3px double var(--risco);
+  border-bottom: 3px double var(--risco);
+  padding: 0.55rem 0.2rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.6rem;
+  align-items: baseline;
+  font-family: var(--tipo-display);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.faixa-sessao .sessao {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+.faixa-sessao .dado {
+  color: var(--giz-fraco);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.faixa-sessao .dado b {
+  color: var(--giz);
+  font-weight: 500;
+}
+
 .topbar {
   display: flex;
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
-  margin-bottom: 1.2rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--linha);
-}
-.topbar .titulo {
-  font-weight: 700;
-  font-size: 1.15rem;
+  margin: 1.1rem 0 1.2rem;
 }
 .topbar .arquivo {
-  color: var(--texto-fraco);
-  font-size: 0.9rem;
+  color: var(--giz-fraco);
+  font-size: 0.85rem;
 }
 .topbar .nav {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
   margin-left: auto;
+  align-items: center;
 }
-.nav button.ativo {
-  background: var(--ref);
-  color: #04130b;
-  border-color: var(--ref);
+.nav-tabs {
+  display: flex;
+  border: 1px solid var(--risco);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.nav-tabs button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--tipo-display);
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.5em 1.1em;
+}
+.nav-tabs button + button {
+  border-left: 1px solid var(--risco);
+}
+.nav-tabs button.ativo {
+  background: var(--giz);
+  color: var(--pista);
+}
+.btn-perigo {
+  color: var(--giz-fraco);
+  background: transparent;
+}
+.btn-perigo:hover {
+  color: var(--vermelho);
+  border-color: var(--vermelho);
 }
 
 /* ---------- Tela de upload ---------- */
+.upload-wrap {
+  max-width: 640px;
+  margin: 7vh auto 0;
+}
+.upload-titulo {
+  font-size: 2.6rem;
+  line-height: 0.95;
+  margin-bottom: 0.15em;
+}
+.upload-sub {
+  color: var(--giz-fraco);
+  margin: 0 0 1.6rem;
+}
 .upload-area {
-  margin-top: 8vh;
-  border: 2px dashed var(--linha);
-  border-radius: 16px;
-  padding: 3rem 2rem;
-  text-align: center;
-  background: var(--surface);
+  border: 1px solid var(--risco);
+  border-left: 4px solid var(--roxo);
+  border-radius: 3px;
+  padding: 2.2rem 1.8rem;
+  background: var(--painel);
   transition: border-color 0.15s, background 0.15s;
 }
 .upload-area.arrastando {
-  border-color: var(--ref);
-  background: var(--surface-2);
+  border-color: var(--roxo);
+  background: var(--painel-2);
 }
-.upload-area h1 {
-  font-size: 1.5rem;
+.upload-area .rotulo {
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+  color: var(--giz-fraco);
+  margin-bottom: 0.5rem;
 }
-.upload-area .dica {
-  color: var(--texto-fraco);
-  margin-top: 1rem;
+.upload-resumo {
+  margin-top: 0.9rem;
+  padding: 0.9rem 1.8rem;
+  border: 1px dashed var(--risco);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  color: var(--giz-fraco);
   font-size: 0.9rem;
+}
+.upload-resumo .ok {
+  color: var(--verde);
+  font-style: normal;
 }
 .erro-box {
-  margin-top: 1.5rem;
-  background: #2a1416;
-  border: 1px solid var(--alerta-forte);
-  color: #ffd9d4;
-  border-radius: 10px;
-  padding: 1rem 1.2rem;
-  text-align: left;
+  margin-top: 1.2rem;
+  border: 1px solid var(--vermelho);
+  border-left-width: 4px;
+  border-radius: 3px;
+  background: var(--painel);
+  color: var(--giz);
+  padding: 0.9rem 1.1rem;
+  font-size: 0.92rem;
+}
+.erro-box b {
+  color: var(--vermelho);
 }
 .aviso-box {
-  margin: 1rem 0;
-  background: #2a2410;
-  border: 1px solid #b9952f;
-  color: #ffe9a8;
-  border-radius: 10px;
-  padding: 0.8rem 1rem;
-  font-size: 0.9rem;
+  margin: 0 0 1rem;
+  border: 1px solid var(--ambar);
+  border-left-width: 4px;
+  border-radius: 3px;
+  background: var(--painel);
+  color: var(--giz);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.85rem;
 }
 
-/* Navegação: abas de tela separadas do botão destrutivo "Novo PDF". */
-.nav-tabs {
+/* ---------- Chips de pilotos ---------- */
+.chips {
   display: flex;
-  gap: 0.4rem;
-  background: var(--surface);
-  padding: 0.25rem;
-  border-radius: 10px;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  max-height: 112px;
+  overflow-y: auto;
+  padding: 2px;
 }
-.btn-perigo {
-  border-color: #5a2c2c;
-  color: #ffb3a8;
+.chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border-radius: 3px;
+  padding: 0.35rem 0.7rem;
+  line-height: 1.2;
+  background: var(--painel);
+}
+.chip .nome {
+  font-weight: 600;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+}
+.chip .ponto {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  display: inline-block;
+  margin-right: 0.45rem;
+}
+.chip .tempo {
+  font-size: 0.86rem;
+  color: var(--giz);
+}
+.chip .classe {
+  font-family: var(--tipo-display);
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  color: var(--giz-fraco);
+  margin-left: 0.5rem;
+}
+.chip.selecionado {
+  border-width: 2px;
+  background: var(--painel-2);
 }
 
-/* Legenda cor→piloto acima do gráfico. */
 .legenda {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 1.1rem;
   margin: 0.2rem 0 0.6rem;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 .legenda span {
   display: inline-flex;
@@ -104,62 +221,23 @@
   gap: 0.4rem;
 }
 .legenda i {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 1px;
   display: inline-block;
 }
 
-/* ---------- Chips de pilotos ---------- */
-/* Altura limitada e rolável para não empurrar o gráfico (elemento dominante)
-   para fora da tela quando há muitos pilotos. */
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  max-height: 116px;
-  overflow-y: auto;
-  padding: 2px;
-}
-.chip .ponto {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-  margin-right: 0.4rem;
-}
-.chip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  border-radius: 10px;
-  padding: 0.45rem 0.8rem;
-  line-height: 1.15;
-}
-.chip .nome {
-  font-weight: 600;
-}
-.chip .tempo {
-  font-size: 0.95rem;
-  color: var(--texto);
-  font-weight: 600;
-}
-.chip.selecionado {
-  border-width: 2px;
-}
-
-/* ---------- Tabelas ---------- */
+/* ---------- Tabelas (torre de tempos) ---------- */
 table.dados {
   width: 100%;
   border-collapse: collapse;
-  margin: 0.5rem 0 1.5rem;
+  margin: 0.5rem 0 1.4rem;
 }
 table.dados th,
 table.dados td {
   text-align: right;
   padding: 0.5rem 0.7rem;
-  border-bottom: 1px solid var(--linha);
+  border-bottom: 1px solid var(--risco);
   white-space: nowrap;
 }
 table.dados th:first-child,
@@ -167,76 +245,100 @@ table.dados td:first-child {
   text-align: left;
   position: sticky;
   left: 0;
-  background: var(--bg);
+  background: var(--pista);
 }
 table.dados th {
-  color: var(--texto-fraco);
-  font-size: 0.82rem;
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  color: var(--giz-fraco);
+  font-size: 0.8rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.08em;
 }
 .tabela-rolavel {
   overflow-x: auto;
 }
+
+/* Convenção de cronometragem nas células */
 .melhor {
-  color: var(--ref);
-  font-weight: 700;
+  color: var(--verde);
+  font-weight: 600;
+}
+.sessao-melhor {
+  color: var(--roxo);
+  font-weight: 600;
 }
 
-/* ---------- Card volta ideal ---------- */
+/* ---------- Volta ideal (painel de pit board) ---------- */
 .card-ideal {
-  background: linear-gradient(135deg, #14241b, #1a1d24);
-  border: 1px solid var(--ref);
-  border-radius: 16px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
+  border: 1px solid var(--risco);
+  border-left: 4px solid var(--roxo);
+  border-radius: 3px;
+  background: var(--painel);
+  padding: 1.1rem 1.4rem 1.2rem;
+  margin-bottom: 1.4rem;
+}
+.card-ideal .rotulo {
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.85rem;
+  color: var(--giz-fraco);
 }
 .card-ideal .total {
-  font-size: 2.6rem;
-  font-weight: 800;
-  color: var(--ref);
+  font-family: var(--tipo-tempo);
+  font-size: 2.7rem;
+  font-weight: 600;
+  color: var(--roxo);
+  line-height: 1.15;
 }
 .card-ideal .setores {
   display: flex;
-  gap: 2rem;
+  gap: 1.8rem;
   flex-wrap: wrap;
-  margin-top: 0.8rem;
-  color: var(--texto-fraco);
+  margin-top: 0.5rem;
+  color: var(--giz-fraco);
+  font-size: 0.92rem;
 }
 .card-ideal .setores b {
-  color: var(--texto);
-}
-
-.cta-ganhar {
-  background: var(--ref);
-  color: #04130b;
-  border-color: var(--ref);
-  font-weight: 700;
-  font-size: 1.02rem;
-  padding: 0.7em 1.3em;
+  color: var(--giz);
+  font-weight: 600;
 }
 
 .secao {
   margin-bottom: 2rem;
 }
 .secao h2 {
-  font-size: 1.15rem;
-  border-left: 4px solid var(--ref);
+  font-size: 1.25rem;
+  border-left: 4px solid var(--roxo);
   padding-left: 0.6rem;
 }
 
-/* Célula de gap por setor: cor mais forte quanto maior a oportunidade. */
-.gap-0 { color: var(--ref); font-weight: 700; }
-.gap-1 { color: var(--texto); }
-.gap-2 { color: var(--alerta); font-weight: 600; }
-.gap-3 { color: var(--alerta-forte); font-weight: 700; }
+.cta-ganhar {
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--roxo);
+  border-color: var(--roxo);
+  color: var(--pista);
+  font-size: 1rem;
+  padding: 0.65em 1.4em;
+}
+
+/* Célula de gap: texto pela convenção, fundo pelo tamanho da oportunidade. */
+.gap-0 { color: var(--verde); font-weight: 600; }
+.gap-1 { color: var(--giz); }
+.gap-2 { color: var(--ambar); }
+.gap-3 { color: var(--vermelho); font-weight: 600; }
 
 .spinner {
-  margin: 10vh auto;
-  width: 44px;
-  height: 44px;
-  border: 4px solid var(--linha);
-  border-top-color: var(--ref);
+  margin: 10vh auto 1rem;
+  width: 42px;
+  height: 42px;
+  border: 3px solid var(--risco);
+  border-top-color: var(--roxo);
   border-radius: 50%;
   animation: girar 0.9s linear infinite;
 }
@@ -245,5 +347,5 @@ table.dados th {
 }
 .status {
   text-align: center;
-  color: var(--texto-fraco);
+  color: var(--giz-fraco);
 }

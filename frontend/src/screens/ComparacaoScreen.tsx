@@ -120,13 +120,14 @@ export function ComparacaoScreen({
             <button
               key={p.numero_carro}
               className={`chip${sel ? ' selecionado' : ''}`}
-              style={{ borderColor: sel ? cor : 'var(--linha)' }}
+              style={{ borderColor: sel ? cor : 'var(--risco)' }}
               onClick={() => aoAlternar(p.numero_carro)}
               disabled={!sel && selecionados.length >= LIMITE_SELECAO}
             >
               <span className="nome">
                 {sel && <i className="ponto" style={{ background: cor }} />}
                 ({p.numero_carro}) {p.nome}
+                {p.classe && <span className="classe">{p.classe}</span>}
               </span>
               <span className="tempo num">{formatarTempo(p.melhor_volta_s)}</span>
             </button>
@@ -156,14 +157,14 @@ export function ComparacaoScreen({
         <div style={{ width: '100%', height: 360 }}>
           <ResponsiveContainer>
             <LineChart data={dadosGrafico} margin={{ top: 10, right: 24, bottom: 10, left: 16 }}>
-              <CartesianGrid stroke="var(--linha)" strokeDasharray="3 3" />
+              <CartesianGrid stroke="var(--risco)" strokeDasharray="3 3" />
               <XAxis
                 dataKey="volta"
-                stroke="var(--texto-fraco)"
-                label={{ value: 'Volta', position: 'insideBottom', offset: -2, fill: 'var(--texto-fraco)' }}
+                stroke="var(--giz-fraco)"
+                label={{ value: 'Volta', position: 'insideBottom', offset: -2, fill: 'var(--giz-fraco)' }}
               />
               <YAxis
-                stroke="var(--texto-fraco)"
+                stroke="var(--giz-fraco)"
                 domain={yDomain}
                 allowDataOverflow={temJanela}
                 width={estreito ? 64 : 92}
@@ -171,8 +172,8 @@ export function ComparacaoScreen({
                 tickFormatter={(s) => formatarTempo(s as number)}
               />
               <Tooltip
-                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--linha)' }}
-                labelStyle={{ color: 'var(--texto)' }}
+                contentStyle={{ background: 'var(--painel)', border: '1px solid var(--risco)' }}
+                labelStyle={{ color: 'var(--giz)' }}
                 formatter={(valor, nome) => [formatarTempo(valor as number), `Carro ${nome}`]}
                 labelFormatter={(l) => `Volta ${l}`}
               />

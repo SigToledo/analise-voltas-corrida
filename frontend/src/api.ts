@@ -7,15 +7,17 @@ import type { AnaliseSessao } from './types'
 const API_BASE = import.meta.env.PROD ? 'http://localhost:8000' : ''
 
 /**
- * Envia o PDF para o backend e devolve a análise.
+ * Envia o PDF Laptimes (e, se houver, o resumo QualifyReduced) para o backend
+ * e devolve a análise.
  *
- * Lança um Error com mensagem amigável se o backend recusar o arquivo (ex:
- * PDF inválido / não é Laptimes), para a tela de upload mostrar o erro sem
+ * Lança um Error com mensagem amigável se o backend recusar um arquivo (ex:
+ * tipo errado de relatório), para a tela de upload mostrar o erro sem
  * inventar nenhum dado.
  */
-export async function analisarPdf(arquivo: File): Promise<AnaliseSessao> {
+export async function analisarPdf(arquivo: File, resumo?: File | null): Promise<AnaliseSessao> {
   const form = new FormData()
   form.append('arquivo', arquivo)
+  if (resumo) form.append('resumo', resumo)
 
   let resposta: Response
   try {

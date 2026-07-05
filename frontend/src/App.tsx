@@ -42,14 +42,22 @@ export default function App() {
     )
   }
 
+  const meta = analise.metadados
+
   return (
     <div className="app">
+      {/* Faixa de sessão: o cabeçalho do próprio PDF, como num monitor de
+          cronometragem. Só mostra o que foi extraído — nada é inventado. */}
+      <div className="faixa-sessao">
+        <span className="sessao">{meta?.sessao ?? 'Sessão'}</span>
+        {meta?.pista && <span className="dado">{meta.pista}</span>}
+        {meta?.data_hora && <span className="dado">{meta.data_hora}</span>}
+        {meta?.evento && <span className="dado">{meta.evento}</span>}
+      </div>
+
       <div className="topbar">
-        <div>
-          <div className="titulo">Análise de Voltas</div>
-          <div className="arquivo">
-            {analise.arquivo_origem} · {analise.num_pilotos} pilotos
-          </div>
+        <div className="arquivo num">
+          {analise.arquivo_origem} · {analise.num_pilotos} pilotos
         </div>
         <div className="nav">
           <div className="nav-tabs">
@@ -71,23 +79,38 @@ export default function App() {
               setSelecionados([])
             }}
           >
-            Novo PDF
+            Novo treino
           </button>
         </div>
       </div>
 
-      {/* Avisos de parsing (dados que não puderam ser lidos com confiança). */}
+      {/* Avisos de leitura (dados que não puderam ser lidos com confiança). */}
       {analise.avisos_parsing.length > 0 && (
         <div className="aviso-box">
           <button
             onClick={() => setMostrarAvisos((v) => !v)}
-            style={{ background: 'transparent', border: 'none', color: 'inherit', padding: 0, font: 'inherit', textAlign: 'left' }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'inherit',
+              padding: 0,
+              font: 'inherit',
+              textAlign: 'left',
+            }}
           >
-            ⚠ {analise.avisos_parsing.length} aviso(s) de leitura do PDF — alguns dados podem estar
-            ausentes (mostrados como “sem leitura”, nunca preenchidos). {mostrarAvisos ? '▲ ocultar' : '▼ ver quais'}
+            {analise.avisos_parsing.length} aviso(s) de leitura — dados ausentes aparecem como
+            “sem leitura”, nunca preenchidos. {mostrarAvisos ? 'Ocultar' : 'Ver quais'}
           </button>
           {mostrarAvisos && (
-            <ul style={{ margin: '0.6rem 0 0', paddingLeft: '1.2rem', maxHeight: 180, overflowY: 'auto', fontSize: '0.82rem' }}>
+            <ul
+              style={{
+                margin: '0.6rem 0 0',
+                paddingLeft: '1.2rem',
+                maxHeight: 180,
+                overflowY: 'auto',
+                fontSize: '0.82rem',
+              }}
+            >
               {analise.avisos_parsing.map((a, i) => (
                 <li key={i}>{a}</li>
               ))}

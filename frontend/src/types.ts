@@ -15,9 +15,19 @@ export interface VoltaLeitura {
   campos_ausentes: string[]
 }
 
+export interface MetadadosSessao {
+  evento: string | null
+  pista: string | null
+  sessao: string | null
+  data_hora: string | null
+  duracao: string | null
+}
+
 export interface MetricasPiloto {
   numero_carro: string
   nome: string
+  classe: string | null
+  posicao_oficial: number | null
   melhor_volta_s: number | null
   melhor_volta_teorica_s: number | null
   gap_real_para_teorica_s: number | null
@@ -68,6 +78,7 @@ export interface ComparacaoSetor {
 export interface AnaliseSessao {
   arquivo_origem: string
   num_pilotos: number
+  metadados: MetadadosSessao | null
   pilotos: MetricasPiloto[]
   volta_ideal_equipe: VoltaIdealEquipe
   comparacao_setores: ComparacaoSetor[]
