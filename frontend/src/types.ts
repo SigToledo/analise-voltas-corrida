@@ -7,6 +7,9 @@
 export interface VoltaLeitura {
   numero_volta: number
   eh_volta_pit: boolean
+  /** Volta 1 ou volta seguinte a uma de pit: o tempo parado no box não é
+   *  contado pelo cronômetro, então o total é irreal e fica fora de tudo. */
+  eh_volta_saida_box: boolean
   tempo_volta_s: number | null
   setor1_s: number | null
   setor2_s: number | null

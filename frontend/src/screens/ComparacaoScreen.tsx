@@ -64,8 +64,11 @@ export function ComparacaoScreen({
     const ponto: Record<string, number | null> = { volta: n }
     for (const carro of selecionados) {
       const volta = (analise.voltas_por_carro[carro] ?? []).find((v) => v.numero_volta === n)
-      // Pit ou tempo ausente -> null (lacuna no gráfico, sem interpolar).
-      ponto[carro] = volta && !volta.eh_volta_pit ? volta.tempo_volta_s : null
+      // Pit, saída de box ou tempo ausente -> null (lacuna no gráfico, sem
+      // interpolar). A saída de box tem total irreal (tempo de box não
+      // contado), então plotá-la enganaria o olho.
+      ponto[carro] =
+        volta && !volta.eh_volta_pit && !volta.eh_volta_saida_box ? volta.tempo_volta_s : null
     }
     dadosGrafico.push(ponto)
   }
@@ -86,7 +89,7 @@ export function ComparacaoScreen({
         v.setor1_s !== null &&
         v.setor2_s !== null &&
         v.setor3_s !== null
-      if (!v.eh_volta_pit && completa && !outliers.has(v.numero_volta)) {
+      if (!v.eh_volta_pit && !v.eh_volta_saida_box && completa && !outliers.has(v.numero_volta)) {
         temposLimpos.push(v.tempo_volta_s as number)
       }
     }

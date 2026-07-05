@@ -27,7 +27,18 @@ class VoltaLeitura(BaseModel):
     numero_volta: int = Field(..., description="Número sequencial da volta (1, 2, 3...).")
     eh_volta_pit: bool = Field(
         ...,
-        description="True se o PDF marcou essa volta com o prefixo 'p' (volta de entrada/saída de boxes).",
+        description="True se o PDF marcou essa volta com o prefixo 'p' (volta de entrada de boxes).",
+    )
+    eh_volta_saida_box: bool = Field(
+        False,
+        description=(
+            "True se esta é uma volta de SAÍDA de box: a volta 1 da sessão ou a "
+            "volta imediatamente seguinte a uma volta 'p'. O cronômetro não conta "
+            "parte do tempo parado no box, então o tempo total dessas voltas sai "
+            "irrealisticamente baixo (às vezes 'melhor' que a pole) e é "
+            "desconsiderado pela cronometragem oficial — e por todas as nossas "
+            "análises também."
+        ),
     )
 
     tempo_volta_s: Optional[float] = Field(

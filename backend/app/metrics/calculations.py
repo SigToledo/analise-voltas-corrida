@@ -11,20 +11,23 @@ PRINCÍPIO QUE GUIA TUDO AQUI:
   Nunca preenchemos com 0 ou estimativa.
 
 DEFINIÇÕES (para os números terem significado claro):
-- "Volta válida/limpa": volta que NÃO é de pit e que tem os TRÊS setores
-  lidos (S1, S2 e S3). Exigir os três setores não é capricho: o cronômetro
-  às vezes registra um "tempo de volta" sem ter medido um dos setores, e esse
-  tempo sai implausivelmente curto (uma volta-fantasma). Confirmamos isso nos
-  dados reais: tomar a "menor volta" sem esse filtro dava uma melhor volta
-  mais rápida que a pole; já a "volta completa mais rápida" bate exatamente
-  com o 'Best Tm' oficial do cronômetro para todos os 26 pilotos. É a base da
-  melhor volta, da mediana e da consistência. (Não removemos outliers de
-  tráfego além disso — seria um critério inventado; preferimos transparência.)
+- "Volta de saída de box": a volta 1 da sessão ou a volta seguinte a uma
+  volta 'p'. O cronômetro NÃO conta parte do tempo parado no box, então o
+  total dessas voltas sai irrealisticamente baixo — nos dados reais há 27
+  saídas de box "mais rápidas" que a melhor volta válida do próprio piloto.
+  A cronometragem oficial as desconsidera, e nós também: elas ficam fora da
+  melhor volta, da mediana/consistência, dos melhores setores e do SSTRAP.
+- "Volta válida/limpa": volta que NÃO é de pit, NÃO é saída de box e tem os
+  TRÊS setores lidos (S1, S2 e S3). Exigir os três setores descarta as
+  voltas-fantasma (tempo registrado sem um dos setores medido). Validação nos
+  dados reais: a "volta completa mais rápida" bate com o 'Best Tm' oficial
+  para todos os 26 pilotos. É a base da melhor volta, da mediana e da
+  consistência. (Não removemos outliers de tráfego além disso — seria um
+  critério inventado; sinalizamos e mantemos.)
 - "Melhor volta": menor tempo total entre as voltas válidas (acima).
 - "Melhor volta teórica": soma do melhor S1 + melhor S2 + melhor S3 do piloto.
-  Cada setor pode vir de uma volta diferente — e aqui usamos QUALQUER volta
-  com aquele setor lido (mesmo que a volta não seja "completa"), porque um
-  tempo de setor medido é válido por si só.
+  Cada setor pode vir de uma volta diferente com aquele split medido — exceto
+  de voltas de saída de box, cujos splits não são confiáveis.
 """
 
 import statistics
@@ -45,32 +48,41 @@ _ATRIBUTO_SETOR = {1: "setor1_s", 2: "setor2_s", 3: "setor3_s"}
 
 
 def _melhor_setor_do_piloto(piloto: PilotoLaps, setor: int) -> Optional[float]:
-    """Menor tempo lido (não-None) do setor pedido, entre todas as voltas do piloto.
+    """Menor tempo lido (não-None) do setor pedido.
 
-    Considera todas as voltas (inclusive pit): um tempo de setor válido é um
-    tempo válido. Setores lentos de entrada/saída de box simplesmente não serão
-    os menores, então não atrapalham. Devolve None se não houver leitura.
+    Voltas de SAÍDA de box ficam de fora: o cronômetro não conta parte do
+    tempo dessas voltas, então os splits delas não são confiáveis (nos dados
+    reais há saídas de box "mais rápidas" que a pole). Voltas de entrada
+    ('p') entram: os setores antes do box são medidos normalmente e os de
+    entrada no box são lentos — nunca serão o mínimo. None se não houver
+    leitura aproveitável.
     """
     atributo = _ATRIBUTO_SETOR[setor]
     tempos = [
-        getattr(v, atributo) for v in piloto.voltas if getattr(v, atributo) is not None
+        getattr(v, atributo)
+        for v in piloto.voltas
+        if getattr(v, atributo) is not None and not v.eh_volta_saida_box
     ]
     return min(tempos) if tempos else None
 
 
 def _voltas_validas(piloto: PilotoLaps):
     """
-    Voltas "válidas/limpas": não são de pit e têm os TRÊS setores lidos.
+    Voltas "válidas/limpas": não são de pit, NEM de saída de box, e têm os
+    TRÊS setores lidos.
 
-    Exigir os três setores descarta as voltas-fantasma (tempo de volta sem um
-    dos setores medido, que sai curto demais). Ver explicação no topo do
-    arquivo. Como toda volta com os 3 setores também tem o tempo total, essas
-    voltas servem tanto para a melhor volta quanto para mediana/consistência.
+    - Exigir os três setores descarta as voltas-fantasma (tempo de volta sem
+      um dos setores medido, que sai curto demais).
+    - Excluir a saída de box (volta 1 ou volta após uma 'p') descarta os
+      totais irreais em que o tempo parado no box não foi contado — é o mesmo
+      critério da cronometragem oficial (essas voltas nunca são o Best Tm).
+    Ver explicação no topo do arquivo.
     """
     return [
         v
         for v in piloto.voltas
         if not v.eh_volta_pit
+        and not v.eh_volta_saida_box
         and v.tempo_volta_s is not None
         and v.setor1_s is not None
         and v.setor2_s is not None
@@ -130,12 +142,14 @@ def calcular_metricas_piloto(piloto: PilotoLaps) -> MetricasPiloto:
         desvio = None
         avisos.append("Menos de 2 voltas válidas — sem desvio padrão (consistência).")
 
-    # SSTRAP (velocidade de radar) sobre voltas NÃO-pit com leitura: maior
-    # valor = ponta; média = velocidade típica. Box laps ficam de fora.
+    # SSTRAP (velocidade de radar) sobre voltas lançadas (nem pit, nem saída
+    # de box): maior valor = ponta; média = velocidade típica em ritmo.
     sstraps = [
         v.velocidade_radar_kmh
         for v in piloto.voltas
-        if not v.eh_volta_pit and v.velocidade_radar_kmh is not None
+        if not v.eh_volta_pit
+        and not v.eh_volta_saida_box
+        and v.velocidade_radar_kmh is not None
     ]
     melhor_sstrap = max(sstraps) if sstraps else None
     sstrap_medio = statistics.mean(sstraps) if sstraps else None

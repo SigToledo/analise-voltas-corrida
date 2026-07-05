@@ -393,6 +393,12 @@ def _extrair_voltas_do_bloco(
         if not palavras_do_bloco:
             continue
 
+        # Às vezes o PDF entrega o "p" de pit e o número da volta como DUAS
+        # palavras separadas ("p" + "7" em vez de "p7") — depende do espaço
+        # entre os caracteres. Um "p" sozinho na coluna do número vira um
+        # marcador pendente, aplicado ao número que vier logo em seguida na
+        # mesma linha.
+        pit_pendente = False
         for palavra in sorted(palavras_do_bloco, key=lambda p: p.x0):
             campo = _campo_mais_proximo(palavra.x1, posicoes)
             if campo is None:
@@ -403,6 +409,9 @@ def _extrair_voltas_do_bloco(
                 continue
 
             if campo == "numero_volta":
+                if palavra.texto.lower() == "p":
+                    pit_pendente = True
+                    continue
                 m = PADRAO_NUMERO_VOLTA.match(palavra.texto)
                 if not m:
                     avisos.append(
@@ -414,8 +423,9 @@ def _extrair_voltas_do_bloco(
                     voltas.append(volta_atual)
                 volta_atual = VoltaLeitura(
                     numero_volta=int(m.group(1)),
-                    eh_volta_pit=palavra.texto.lower().startswith("p"),
+                    eh_volta_pit=palavra.texto.lower().startswith("p") or pit_pendente,
                 )
+                pit_pendente = False
                 continue
 
             if volta_atual is None:
@@ -597,6 +607,18 @@ def parse_laptimes_pdf(caminho_pdf: str) -> ResultadoParsingPDF:
                     # Esse piloto passa a ser o "em andamento" para a próxima
                     # coluna, mesmo que aqui ele não tenha tido voltas válidas.
                     piloto_atual = (bloco.numero_carro, bloco.nome)
+
+    # Marca as voltas de SAÍDA de box: a volta 1 (o carro sai do box para a
+    # pista no início da sessão) e toda volta seguinte a uma volta 'p'. O
+    # tempo parado no box não é contado pelo cronômetro, então o total dessas
+    # voltas é irreal — quem consome os dados decide como tratá-las, mas a
+    # marcação nasce aqui, junto do dado bruto.
+    for piloto in pilotos_por_chave.values():
+        voltas_de_pit = {v.numero_volta for v in piloto.voltas if v.eh_volta_pit}
+        for volta in piloto.voltas:
+            volta.eh_volta_saida_box = (
+                volta.numero_volta == 1 or (volta.numero_volta - 1) in voltas_de_pit
+            )
 
     return ResultadoParsingPDF(
         arquivo_origem=caminho_pdf,
