@@ -23,6 +23,16 @@ class MetricasPiloto(BaseModel):
 
     numero_carro: str
     nome: str
+    classe: Optional[str] = Field(
+        None,
+        description=(
+            "Classe/categoria (ex: ELITE, MASTER). Vem do relatório de resumo "
+            "(QualifyReduced), quando enviado — o Laptimes não traz classe."
+        ),
+    )
+    posicao_oficial: Optional[int] = Field(
+        None, description="Posição no ranking geral do resumo oficial, quando enviado."
+    )
 
     melhor_volta_s: Optional[float] = Field(
         None, description="Menor tempo total entre as voltas não-pit. None se não houver."
@@ -141,6 +151,10 @@ class AnaliseSessao(BaseModel):
 
     arquivo_origem: str
     num_pilotos: int
+    metadados: Optional[dict] = Field(
+        None,
+        description="Cabeçalho da sessão extraído do PDF: evento, pista, sessão, data/hora, duração.",
+    )
     pilotos: list[MetricasPiloto] = Field(default_factory=list)
     volta_ideal_equipe: VoltaIdealEquipe
     comparacao_setores: list[ComparacaoSetor] = Field(default_factory=list)
