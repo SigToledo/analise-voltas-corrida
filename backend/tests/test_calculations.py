@@ -173,3 +173,29 @@ def test_comparar_setores_referencia_tem_gap_zero(pilotos):
             elif linha.tempo_setor_s is not None:
                 assert linha.gap_para_referencia_s > 0
                 assert linha.gap_para_referencia_pct > 0
+
+
+def test_aviso_de_voltas_desconsideradas_traz_os_tempos():
+    """A volta 3 (1:15.000) é mais rápida que a oficial em negrito (1:16.500):
+    a cronometragem a cancelou. O aviso diz qual volta, o tempo dela e o
+    oficial — o engenheiro vê o que foi descartado sem abrir o PDF."""
+    from app.models.lap_data import PilotoLaps, VoltaLeitura
+
+    def volta(n, t, negrito=False):
+        return VoltaLeitura(
+            numero_volta=n, eh_volta_pit=False, eh_volta_saida_box=n == 1,
+            tempo_volta_s=t, melhor_oficial=negrito, setores_s=[t / 3] * 3,
+        )
+
+    p = PilotoLaps(
+        numero_carro="9", nome="X",
+        voltas=[volta(1, 90.0), volta(2, 76.5, negrito=True), volta(3, 75.0), volta(4, 77.0)],
+    )
+    m = calcular_metricas_piloto(p, 3, True)
+    assert m.melhor_volta_s == pytest.approx(76.5)
+    assert m.voltas_desconsideradas == [3]
+    assert any(
+        "Volta 3 (1:15.000) mais rápida que a melhor oficial (1:16.500)" in a for a in m.avisos
+    )
+    # "Poucas voltas" é mostrado pelo campo, não como aviso.
+    assert m.poucas_voltas and not any("indício" in a for a in m.avisos)

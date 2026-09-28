@@ -428,6 +428,29 @@ table.dados th {
   color: var(--ambar);
 }
 
+/* Observações por piloto (avisos do cálculo), logo abaixo do resumo. */
+.observacoes {
+  margin: -0.4rem 0 1.2rem;
+  padding: 0.6rem 0.9rem;
+  border-left: 3px solid var(--risco);
+  background: var(--painel);
+  border-radius: 3px;
+  font-size: 0.85rem;
+}
+.observacoes h3 {
+  font-size: 0.8rem;
+  color: var(--giz-fraco);
+  letter-spacing: 0.08em;
+  margin: 0 0 0.3rem;
+}
+.observacoes ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+.observacoes li + li {
+  margin-top: 0.2rem;
+}
+
 /* Linha secundária dentro de uma célula (nº de voltas, delta). */
 table.dados .sub {
   font-size: 0.74rem;

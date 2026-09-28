@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { RitmoPorTrecho } from '../components/RitmoPorTrecho'
 import { corDoPiloto } from '../cores'
+import { LIMITE_JANELA, marcasEixo, passoMarcadores } from '../escala'
 import { compararPilotos } from '../ordem'
 import { formatarDelta, formatarRelogio, formatarTempo, formatarVelocidade } from '../format'
 import type { AnaliseSessao, MetricasPiloto, TipoVolta } from '../types'
@@ -60,9 +61,16 @@ export function ComparacaoScreen({
   const pilotos = [...analise.pilotos].sort(compararPilotos(modo))
   const mostrarPosicao = modo === 'corrida' && pilotos.some((p) => p.posicao_oficial !== null)
 
+  const metricas = new Map(analise.pilotos.map((p) => [p.numero_carro, p]))
+  // Voltas que a cronometragem desconsiderou (mais rápidas que a oficial —
+  // canceladas, ex.: limite de pista). Não entram na linha: viram "×".
+  const desconsideradas = new Map(
+    selecionados.map((c) => [c, new Set(metricas.get(c)?.voltas_desconsideradas ?? [])]),
+  )
+
   // Dados do gráfico: uma linha por volta, com o tempo de cada selecionado
-  // (null se a volta não é lançada ou não tem leitura) e o tipo, para o
-  // tooltip e o desenho do ponto.
+  // (null se a volta não é lançada, foi desconsiderada ou não tem leitura) e
+  // o tipo, para o tooltip e o desenho do ponto.
   const maxVolta = Math.max(
     1,
     ...selecionados.flatMap((c) =>
@@ -74,53 +82,63 @@ export function ComparacaoScreen({
     const ponto: Record<string, number | string | null> = { volta: n }
     for (const carro of selecionados) {
       const volta = (analise.voltas_por_carro[carro] ?? []).find((v) => v.numero_volta === n)
-      ponto[carro] = volta && TIPOS_PLOTADOS.includes(volta.tipo) ? volta.tempo_volta_s : null
+      const naLinha =
+        volta && TIPOS_PLOTADOS.includes(volta.tipo) && !desconsideradas.get(carro)?.has(n)
+      ponto[carro] = naLinha ? volta.tempo_volta_s : null
       ponto[`${carro}#tipo`] = volta?.tipo ?? null
+      ponto[`${carro}#melhor`] = metricas.get(carro)?.numero_volta_melhor === n ? 1 : 0
     }
     dadosGrafico.push(ponto)
   }
 
-  // Escala do eixo Y focada nas voltas de RITMO. Sem isso, uma única volta
-  // lenta (tráfego, 4-5 min) estica o eixo e espreme todas as voltas boas
-  // numa faixa ilegível no rodapé. A janela usa só voltas lançadas,
-  // completas, que não são outlier nem desconsideradas; o que passar disso
-  // continua plotado (a linha sai pelo topo), mas a escala fica útil.
+  // Escala do eixo Y focada nas voltas de ATAQUE. Sem isso, uma única volta
+  // lenta (tráfego, desaquecimento no qualy) estica o eixo e espreme todas as
+  // voltas boas numa faixa ilegível. A janela usa só voltas lançadas,
+  // completas, que não são outlier nem desconsideradas e estão a até 107% da
+  // melhor do piloto; o que passar disso continua plotado (a linha sai pelo
+  // topo), mas a escala fica útil.
   const temposLimpos: number[] = []
   for (const carro of selecionados) {
-    const metr = analise.pilotos.find((p) => p.numero_carro === carro)
+    const metr = metricas.get(carro)
     const fora = new Set([
       ...(metr?.voltas_outlier ?? []),
       ...(metr?.voltas_desconsideradas ?? []),
     ])
+    const teto = metr?.melhor_volta_s != null ? metr.melhor_volta_s * LIMITE_JANELA : Infinity
     for (const v of analise.voltas_por_carro[carro] ?? []) {
       const completa = v.tempo_volta_s !== null && v.setores_s.every((s) => s !== null)
-      if (v.tipo === 'normal' && completa && !fora.has(v.numero_volta)) {
+      if (
+        v.tipo === 'normal' &&
+        completa &&
+        !fora.has(v.numero_volta) &&
+        (v.tempo_volta_s as number) <= teto
+      ) {
         temposLimpos.push(v.tempo_volta_s as number)
       }
     }
   }
   const temJanela = temposLimpos.length > 0
-  // Reserva uma faixa no rodapé do gráfico para os marcadores (uma "linha"
-  // por piloto, para não se sobreporem).
-  const folgaMarcadores = temJanela ? 0.7 + selecionados.length * 0.55 : 0
+  const minLimpo = temJanela ? Math.floor(Math.min(...temposLimpos)) - 1 : 0
+  const maxLimpo = temJanela ? Math.ceil(Math.max(...temposLimpos)) + 1 : 0
+  // Reserva uma faixa no rodapé para os marcadores: uma "linha" por piloto,
+  // com altura proporcional à escala para as letras não se encostarem.
+  const passo = passoMarcadores(minLimpo, maxLimpo)
   const yDomain: [number, number] | ['auto', 'auto'] = temJanela
-    ? [
-        Math.floor(Math.min(...temposLimpos)) - 1 - folgaMarcadores,
-        Math.ceil(Math.max(...temposLimpos)) + 1,
-      ]
+    ? [minLimpo - passo * (selecionados.length + 0.4), maxLimpo]
     : ['auto', 'auto']
 
-  // Marcadores por piloto: P (entrou no box), S (saída do box), L (largada).
+  // Marcadores por piloto: P (entrou no box), S (saída do box), L
+  // (largada) e × (desconsiderada pela cronometragem).
   const marcadores = temJanela
     ? selecionados.map((carro, i) => ({
         carro,
         pontos: (analise.voltas_por_carro[carro] ?? [])
-          .filter((v) => SIGLA_TIPO[v.tipo])
           .map((v) => ({
             volta: v.numero_volta,
-            nivel: (yDomain[0] as number) + 0.55 + i * 0.55,
-            simbolo: SIGLA_TIPO[v.tipo],
-          })),
+            nivel: (yDomain[0] as number) + passo * (0.7 + i),
+            simbolo: desconsideradas.get(carro)?.has(v.numero_volta) ? '×' : SIGLA_TIPO[v.tipo],
+          }))
+          .filter((m) => m.simbolo),
       }))
     : []
   const siglasUsadas = new Set(marcadores.flatMap((m) => m.pontos.map((p) => p.simbolo)))
@@ -215,6 +233,7 @@ export function ComparacaoScreen({
                 stroke="var(--giz-fraco)"
                 domain={yDomain}
                 allowDataOverflow={temJanela}
+                ticks={temJanela ? marcasEixo(minLimpo, maxLimpo) : undefined}
                 width={estreito ? 64 : 92}
                 tick={{ fontSize: estreito ? 11 : 13 }}
                 tickFormatter={(s) => formatarTempo(s as number)}
@@ -243,8 +262,10 @@ export function ComparacaoScreen({
                 contentStyle={{ background: 'var(--painel)', border: '1px solid var(--risco)' }}
                 labelStyle={{ color: 'var(--giz)' }}
                 formatter={(valor, nome, item) => {
-                  const tipo = (item?.payload as Record<string, unknown> | undefined)?.[`${nome}#tipo`]
-                  const extra = tipo === 'relargada' ? ' (relargada)' : ''
+                  const dados = item?.payload as Record<string, unknown> | undefined
+                  const extra =
+                    (dados?.[`${nome}#melhor`] ? ' · melhor volta' : '') +
+                    (dados?.[`${nome}#tipo`] === 'relargada' ? ' · relargada' : '')
                   return [`${formatarTempo(valor as number)}${extra}`, `Carro ${nome}`]
                 }}
                 labelFormatter={(l) => `Volta ${l}`}
@@ -258,8 +279,9 @@ export function ComparacaoScreen({
                     dataKey={carro}
                     stroke={cor}
                     strokeWidth={2.5}
-                    // Relargada: círculo vazado (volta lançada, mas logo após
-                    // o SC — pneu frio e pelotão junto).
+                    // Melhor volta: ponto maior com anel claro. Relargada:
+                    // círculo vazado (volta lançada, mas logo após o SC —
+                    // pneu frio e pelotão junto).
                     dot={(props: {
                       cx?: number
                       cy?: number
@@ -271,6 +293,11 @@ export function ComparacaoScreen({
                         return <g key={chave} />
                       }
                       const tipo = props.payload?.[`${carro}#tipo`] as TipoVolta | undefined
+                      if (props.payload?.[`${carro}#melhor`]) {
+                        return (
+                          <circle key={chave} cx={props.cx} cy={props.cy} r={5.5} fill={cor} stroke="var(--giz)" strokeWidth={2} />
+                        )
+                      }
                       return tipo === 'relargada' ? (
                         <circle key={chave} cx={props.cx} cy={props.cy} r={4} fill="var(--pista)" stroke={cor} strokeWidth={2} />
                       ) : (
@@ -328,6 +355,14 @@ export function ComparacaoScreen({
               <b>S</b> saída do box
             </span>
           )}
+          {siglasUsadas.has('×') && (
+            <span>
+              <b>×</b> desconsiderada pela cronometragem
+            </span>
+          )}
+          <span>
+            <b className="melhor-ponto">●</b> melhor volta
+          </span>
           {faixasSC.length > 0 && (
             <span>
               <b className="sc">SC</b> provável Safety Car
@@ -435,6 +470,8 @@ export function ComparacaoScreen({
           </p>
         )}
 
+        <Observacoes analise={analise} selecionados={selecionados} />
+
         {selecionados.length > 0 && (
           <button className="cta-ganhar" onClick={aoVerGanharTempo}>
             Ver onde ganhar tempo →
@@ -445,6 +482,32 @@ export function ComparacaoScreen({
       {modo !== 'qualy' && selecionados.length > 0 && (
         <RitmoPorTrecho analise={analise} selecionados={selecionados} />
       )}
+    </div>
+  )
+}
+
+/**
+ * O que o cálculo precisa que o engenheiro saiba sobre cada selecionado:
+ * voltas desconsideradas (com os tempos), setor sem leitura, piloto sem
+ * volta oficial. Vem pronto do backend (MetricasPiloto.avisos).
+ */
+function Observacoes({ analise, selecionados }: { analise: AnaliseSessao; selecionados: string[] }) {
+  const itens = selecionados.flatMap((carro) => {
+    const p = analise.pilotos.find((x) => x.numero_carro === carro)
+    return (p?.avisos ?? []).map((aviso, i) => ({ p: p as MetricasPiloto, aviso, chave: `${carro}-${i}` }))
+  })
+  if (itens.length === 0) return null
+  return (
+    <div className="observacoes">
+      <h3>Observações</h3>
+      <ul>
+        {itens.map(({ p, aviso, chave }) => (
+          <li key={chave}>
+            <b style={{ color: corDoPiloto(selecionados, p.numero_carro) }}>({p.numero_carro})</b>{' '}
+            {aviso}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

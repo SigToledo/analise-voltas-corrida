@@ -66,6 +66,15 @@ _FATOR_MAD = 1.4826
 _OUTLIER_SIGMAS = 3.0
 
 
+def formatar_tempo(segundos: float) -> str:
+    """77.319 -> '1:17.319' (formato de cronômetro, para os avisos)."""
+    # Arredonda em milésimos ANTES de separar os minutos: senão 119.9996
+    # viraria "1:60.000".
+    minutos, milesimos = divmod(round(segundos * 1000), 60_000)
+    resto = milesimos / 1000
+    return f"{minutos}:{resto:06.3f}" if minutos else f"{resto:.3f}"
+
+
 def _melhor_oficial(piloto: PilotoLaps) -> Optional[VoltaLeitura]:
     """A volta destacada em negrito (a primeira, em caso de empate de tempo)."""
     marcadas = [v for v in piloto.voltas if v.melhor_oficial and v.tempo_volta_s is not None]
@@ -172,10 +181,14 @@ def calcular_metricas_piloto(
         avisos.append("Sem voltas válidas (fora do box, com todos os setores) — sem melhor volta.")
 
     if desconsideradas and usa_destaque and melhor_volta is not None:
-        lista = ", ".join(str(n) for n in sorted(desconsideradas))
+        tempos = {v.numero_volta: v.tempo_volta_s for v in piloto.voltas}
+        lista = ", ".join(f"{n} ({formatar_tempo(tempos[n])})" for n in sorted(desconsideradas))
+        plural = len(desconsideradas) > 1
         avisos.append(
-            f"Volta(s) {lista} mais rápida(s) que a melhor oficial — desconsiderada(s) pela "
-            f"cronometragem (provável cancelamento); fora do ritmo e dos melhores setores."
+            f"{'Voltas' if plural else 'Volta'} {lista} mais {'rápidas' if plural else 'rápida'} "
+            f"que a melhor oficial ({formatar_tempo(melhor_volta)}): "
+            f"{'desconsideradas' if plural else 'desconsiderada'} pela cronometragem (provável "
+            f"cancelamento, ex.: limite de pista). Fora do ritmo e dos melhores setores."
         )
 
     # --- Setores e volta teórica ---
@@ -194,12 +207,9 @@ def calcular_metricas_piloto(
     mediana = round(statistics.median(tempos_ritmo), 3) if tempos_ritmo else None
     consistencia = consistencia_mad(tempos_ritmo)
     poucas = len(tempos_ritmo) < MIN_VOLTAS_RITMO
+    # "Poucas voltas" não vira aviso: o campo poucas_voltas já marca isso na tela.
     if not tempos_ritmo:
         avisos.append("Sem voltas de ritmo (lançadas, fora do box e do Safety Car) — sem mediana.")
-    elif poucas:
-        avisos.append(
-            f"Só {len(tempos_ritmo)} volta(s) de ritmo — mediana e consistência valem como indício."
-        )
 
     # --- Radar: máximo fora do box; mediana nas voltas de ritmo ---
     radares = [

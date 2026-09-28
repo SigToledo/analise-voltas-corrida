@@ -4,8 +4,11 @@
 /** 134.353 -> "2:14.353" ; 49.98 -> "49.980". null -> "—". */
 export function formatarTempo(segundos: number | null | undefined): string {
   if (segundos === null || segundos === undefined) return '—'
-  const minutos = Math.floor(segundos / 60)
-  const resto = segundos - minutos * 60
+  // Arredonda em milésimos ANTES de separar os minutos: senão 119.9996
+  // viraria "1:60.000".
+  const milesimos = Math.round(segundos * 1000)
+  const minutos = Math.floor(milesimos / 60000)
+  const resto = (milesimos - minutos * 60000) / 1000
   if (minutos > 0) {
     // resto precisa de zero à esquerda: 2:04.160, não 2:4.160
     return `${minutos}:${resto.toFixed(3).padStart(6, '0')}`
