@@ -151,6 +151,8 @@ export interface AnaliseSessao {
   metadados: MetadadosSessao | null
   pilotos: MetricasPiloto[]
   volta_ideal_equipe: VoltaIdealEquipe
+  /** Volta ideal de cada classe (só quando o resumo trouxe as classes). */
+  voltas_ideais_por_classe: Record<string, VoltaIdealEquipe>
   comparacao_setores: ComparacaoSetor[]
   voltas_por_carro: Record<string, VoltaLeitura[]>
   /** Grupos juntados, na ordem do horário. Vazio numa sessão única. */

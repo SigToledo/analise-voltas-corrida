@@ -42,10 +42,25 @@ class ParteSessao:
     metadados: MetadadosSessao
 
 
-def sigla_do_grupo(rotulo: str) -> str:
-    """'GRUPO 2' -> 'G2'; outros nomes ('SUPER', 'ELITE/MASTER') ficam como estão."""
+def sigla_do_grupo(rotulo: str) -> str | None:
+    """'GRUPO 2' -> 'G2'; None se o nome não é um número de grupo ('SUPER')."""
     achado = re.fullmatch(r"GRUPO\s*(\d+)", rotulo.strip(), flags=re.IGNORECASE)
-    return f"G{achado.group(1)}" if achado else rotulo.strip()
+    return f"G{achado.group(1)}" if achado else None
+
+
+def siglas_dos_grupos(rotulos: list[str]) -> list[str]:
+    """
+    Etiqueta curta de cada grupo, na ordem do horário. "GRUPO n" vira Gn.
+    Qualquer outro nome vira G1, G2… pela ordem: o classificatório da MBR se
+    chama "ELITE/MASTER" e "SUPER", mas cada turma tem as três CLASSES
+    misturadas (9 ELITE, 10 MASTER e 4 SUPER na primeira) — uma etiqueta
+    "SUPER" ao lado da classe do piloto confundiria. O nome oficial continua
+    em GrupoSessao.rotulo.
+    """
+    numeradas = [sigla_do_grupo(r) for r in rotulos]
+    if all(numeradas) and len(set(numeradas)) == len(numeradas):
+        return numeradas
+    return [f"G{i}" for i in range(1, len(rotulos) + 1)]
 
 
 def _rotulos(sessoes: list[str]) -> tuple[int, list[str]]:
@@ -135,8 +150,7 @@ def juntar_partes(
     grupos: list[GrupoSessao] = []
     pilotos = []
     avisos: list[str] = []
-    for p, rotulo in zip(ordenadas, rotulos):
-        sigla = sigla_do_grupo(rotulo)
+    for p, rotulo, sigla in zip(ordenadas, rotulos, siglas_dos_grupos(rotulos)):
         for pil in p.resultado.pilotos:
             pilotos.append(pil.model_copy(update={"grupo": sigla}))
         avisos.extend(f"{sigla}: {a}" for a in p.resultado.avisos)

@@ -1,10 +1,81 @@
+import { BarraFiltros } from '../components/Filtros'
 import { corDoPiloto } from '../cores'
+import type { Filtros } from '../filtros'
 import { formatarDelta, formatarPct, formatarTempo } from '../format'
-import type { AnaliseSessao, MetricasPiloto } from '../types'
+import type { AnaliseSessao, MetricasPiloto, VoltaIdealEquipe } from '../types'
 
 interface Props {
   analise: AnaliseSessao
   selecionados: string[]
+  filtros: Filtros
+  aoMudarFiltros: (filtros: Filtros) => void
+}
+
+/**
+ * Card de uma volta ideal (a soma dos melhores setores de um conjunto de
+ * pilotos) com o dono de cada setor. `referencia`: o total da volta ideal do
+ * grid, para mostrar quanto esta (a de uma classe) está acima dela.
+ */
+function CardVoltaIdeal({
+  titulo,
+  ideal,
+  numSetores,
+  referencia,
+}: {
+  titulo: string
+  ideal: VoltaIdealEquipe
+  numSetores: number
+  referencia?: number | null
+}) {
+  const setores = Array.from({ length: numSetores }, (_, i) => i + 1)
+  const delta =
+    referencia != null && ideal.total_s !== null ? ideal.total_s - referencia : null
+  return (
+    <div className="card-ideal">
+      <div className="rotulo">{titulo}</div>
+      {ideal.total_s === null ? (
+        <div className="sem-leitura" style={{ fontSize: '1.4rem' }}>
+          Não foi possível montar a volta ideal (algum setor sem leitura).
+        </div>
+      ) : (
+        <div className="total num">{formatarTempo(ideal.total_s)}</div>
+      )}
+      {delta !== null && (
+        <div className="delta-ideal num">
+          {delta <= 0.0005 ? 'igual à volta ideal do grid' : `${formatarDelta(delta)} da volta ideal do grid`}
+        </div>
+      )}
+      <div className="setores">
+        {setores.map((s) => {
+          const dono = ideal.setores[s - 1]
+          return (
+            <div key={s}>
+              Setor {s}:{' '}
+              {!dono || dono.tempo_s === null ? (
+                <span className="sem-leitura">sem leitura</span>
+              ) : (
+                <>
+                  <b className="num">{formatarTempo(dono.tempo_s)}</b> ({dono.numero_carro_dono}){' '}
+                  {dono.nome_dono}
+                  {dono.grupo_dono && <span className="grupo-legenda"> · {dono.grupo_dono}</span>}
+                </>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {/* Exclusões/avisos da volta ideal (ex.: setor sem leitura). Reforça a
+          regra de não inventar dado: deixa explícito o que ficou de fora do
+          cálculo, em vez de mostrar um total "fechado" sem ressalva. */}
+      {ideal.avisos.length > 0 && (
+        <ul style={{ margin: '0.8rem 0 0', paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--giz-fraco)' }}>
+          {ideal.avisos.map((a, i) => (
+            <li key={i}>{a}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 /** Melhor tempo do setor (1 = S1…) nas métricas do piloto. */
@@ -40,8 +111,12 @@ function fundoGap(gap: number | null, maxGapSetor: number): string {
  * pilotos selecionados. Setor sem leitura aparece como "sem leitura", e o
  * piloto não entra na referência daquele setor.
  */
-export function GanharTempoScreen({ analise, selecionados }: Props) {
+export function GanharTempoScreen({ analise, selecionados, filtros, aoMudarFiltros }: Props) {
   const ideal = analise.volta_ideal_equipe
+  // Com uma classe escolhida, a volta ideal dela aparece AO LADO da do grid:
+  // mostra quanto a classe está longe do melhor e o potencial dentro dela.
+  const idealClasse = filtros.classe ? analise.voltas_ideais_por_classe[filtros.classe] : undefined
+  const grupos = analise.grupos.length > 1 ? ` (${analise.grupos.map((g) => g.sigla).join(' + ')})` : ''
   // Quantos setores a pista tem vem do próprio relatório (3 em Cascavel e
   // Cuiabá, mas pode ser 2 ou 4 em outra pista).
   const SETORES = Array.from({ length: analise.num_setores }, (_, i) => i + 1)
@@ -60,47 +135,21 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
 
   return (
     <div>
-      {/* Card volta ideal da equipe */}
-      <div className="card-ideal">
-        <div className="rotulo">
-          Volta ideal da equipe · melhores setores do grid
-          {analise.grupos.length > 1 && ` (${analise.grupos.map((g) => g.sigla).join(' + ')})`}
-        </div>
-        {ideal.total_s === null ? (
-          <div className="sem-leitura" style={{ fontSize: '1.4rem' }}>
-            Não foi possível montar a volta ideal (algum setor sem leitura no grid).
-          </div>
-        ) : (
-          <div className="total num">{formatarTempo(ideal.total_s)}</div>
-        )}
-        <div className="setores">
-          {SETORES.map((s) => {
-            const dono = ideal.setores[s - 1]
-            return (
-              <div key={s}>
-                Setor {s}:{' '}
-                {dono.tempo_s === null ? (
-                  <span className="sem-leitura">sem leitura</span>
-                ) : (
-                  <>
-                    <b className="num">{formatarTempo(dono.tempo_s)}</b> ({dono.numero_carro_dono}){' '}
-                    {dono.nome_dono}
-                    {dono.grupo_dono && <span className="grupo-legenda"> · {dono.grupo_dono}</span>}
-                  </>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        {/* Exclusões/avisos da volta ideal (ex.: setor sem leitura no grid).
-            Reforça a regra de não inventar dado: deixa explícito o que ficou
-            de fora do cálculo, em vez de mostrar um total "fechado" sem ressalva. */}
-        {ideal.avisos.length > 0 && (
-          <ul style={{ margin: '0.8rem 0 0', paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--giz-fraco)' }}>
-            {ideal.avisos.map((a, i) => (
-              <li key={i}>{a}</li>
-            ))}
-          </ul>
+      <BarraFiltros analise={analise} filtros={filtros} aoMudar={aoMudarFiltros} mostrarGrupo={false} />
+
+      <div className={idealClasse ? 'ideais lado-a-lado' : 'ideais'}>
+        <CardVoltaIdeal
+          titulo={`Volta ideal da equipe · melhores setores do grid${grupos}`}
+          ideal={ideal}
+          numSetores={analise.num_setores}
+        />
+        {idealClasse && (
+          <CardVoltaIdeal
+            titulo={`Volta ideal da classe ${filtros.classe} · melhores setores da classe`}
+            ideal={idealClasse}
+            numSetores={analise.num_setores}
+            referencia={ideal.total_s}
+          />
         )}
       </div>
 

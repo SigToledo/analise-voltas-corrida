@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.lap_data import PilotoLaps, ResultadoParsingPDF, VoltaLeitura
-from app.parser.juntar import ErroJuncao, ParteSessao, juntar_partes, sigla_do_grupo
+from app.parser.juntar import ErroJuncao, ParteSessao, juntar_partes, sigla_do_grupo, siglas_dos_grupos
 from app.parser.laptimes_parser import parse_laptimes
 from app.parser.pdf_texto import LeitorPDF
 from app.parser.tipo_pdf import MetadadosSessao, TipoSessao, identificar
@@ -50,7 +50,15 @@ def _exige(*caminhos: Path) -> None:
 def test_sigla_do_grupo():
     assert sigla_do_grupo("GRUPO 1") == "G1"
     assert sigla_do_grupo("Grupo 12") == "G12"
-    assert sigla_do_grupo("SUPER") == "SUPER"
+    assert sigla_do_grupo("SUPER") is None
+
+
+def test_turmas_com_nome_de_classe_viram_g1_g2_pelo_horario():
+    """'ELITE/MASTER' e 'SUPER' são turmas com classes misturadas: a etiqueta
+    não pode parecer classe."""
+    assert siglas_dos_grupos(["GRUPO 1", "GRUPO 2"]) == ["G1", "G2"]
+    assert siglas_dos_grupos(["ELITE/MASTER", "SUPER"]) == ["G1", "G2"]
+    assert siglas_dos_grupos(["GRUPO 1", "SUPER"]) == ["G1", "G2"]
 
 
 @pytest.mark.parametrize("dia,sessao,n1,n2", TREINOS)
@@ -74,7 +82,9 @@ def test_junta_o_classificatorio_dividido_por_classe():
     resultado, meta, grupos = juntar_partes([_parte(elite), _parte(sup)])
     assert len(resultado.pilotos) == 23 + 24
     assert meta.tipo_sessao is TipoSessao.QUALY
-    assert len(grupos) == 2 and "SUPER" in [g.sigla for g in grupos]
+    # Turmas viram G1/G2 pelo horário; o nome oficial fica no rótulo.
+    assert [g.sigla for g in grupos] == ["G1", "G2"]
+    assert grupos[1].rotulo == "SUPER"
     assert "+" in meta.sessao
 
 
@@ -158,6 +168,16 @@ def test_api_junta_grupos_e_casa_cada_resumo_com_o_seu():
     # Volta ideal do grid inteiro, com o grupo de cada dono.
     assert all(s["grupo_dono"] in ("G1", "G2") for s in d["volta_ideal_equipe"]["setores"])
     assert not any("Divergência" in a for a in d["avisos_parsing"])
+
+    # Volta ideal de cada classe: dono sempre da própria classe, e nunca mais
+    # rápida que a do grid (a do grid escolhe entre TODOS os pilotos).
+    classe_do_carro = {p["numero_carro"]: p["classe"] for p in d["pilotos"]}
+    por_classe = d["voltas_ideais_por_classe"]
+    assert set(por_classe) == {"ELITE", "MASTER", "SUPER"}
+    grid = d["volta_ideal_equipe"]["total_s"]
+    for classe, ideal in por_classe.items():
+        assert ideal["total_s"] >= grid - 1e-9
+        assert all(classe_do_carro[s["numero_carro_dono"]] == classe for s in ideal["setores"])
 
     # Trocar o modo com os mesmos arquivos continua funcionando.
     resp = client.post("/analise", files=arquivos, data={"modo": "qualy"})

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { avisoGruposMisturados, filtrarPorGrupo, horaDoGrupo } from './grupos'
+import { avisoGruposMisturados, horaDoGrupo } from './grupos'
 import type { GrupoSessao, MetricasPiloto } from './types'
 
 const p = (carro: string, grupo: string | null) => ({ numero_carro: carro, grupo }) as MetricasPiloto
@@ -8,13 +8,6 @@ const grupos: GrupoSessao[] = [
   { sigla: 'G1', rotulo: 'GRUPO 1', sessao: null, data_hora: '11/09/2026 08:45', arquivo: 'a', num_pilotos: 2 },
   { sigla: 'G2', rotulo: 'GRUPO 2', sessao: null, data_hora: '11/09/2026 9:10', arquivo: 'b', num_pilotos: 1 },
 ]
-
-describe('filtrarPorGrupo', () => {
-  it('todos ou só o grupo escolhido', () => {
-    expect(filtrarPorGrupo(pilotos, null)).toHaveLength(3)
-    expect(filtrarPorGrupo(pilotos, 'G2').map((x) => x.numero_carro)).toEqual(['7'])
-  })
-})
 
 describe('horaDoGrupo', () => {
   it('formata a hora e completa o zero', () => {

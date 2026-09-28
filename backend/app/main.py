@@ -25,7 +25,7 @@ import tempfile
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.metrics.calculations import montar_analise_sessao
+from app.metrics.calculations import calcular_voltas_ideais_por_classe, montar_analise_sessao
 from app.models.metrics import AnaliseSessao, GrupoSessao, MetricasPiloto
 from app.parser.juntar import ErroJuncao, ParteSessao, juntar_partes
 from app.parser.laptimes_parser import parse_laptimes
@@ -151,6 +151,13 @@ async def analisar(
         analise.grupos = grupos
         analise.avisos_parsing.extend(f"Arquivo ignorado — {i}." for i in ignorados)
         _aplicar_resumos(analise, laptimes, grupos, resumos)
+        # A classe de cada carro só é conhecida depois do resumo: agora dá
+        # para montar a volta ideal de cada classe.
+        analise.voltas_ideais_por_classe = calcular_voltas_ideais_por_classe(
+            resultado.pilotos,
+            {p.numero_carro: p.classe for p in analise.pilotos if p.classe},
+            resultado.num_setores,
+        )
         return analise
     finally:
         for caminho_tmp in temporarios:

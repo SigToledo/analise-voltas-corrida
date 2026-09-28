@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import './App.css'
 import { analisarPdfs } from './api'
+import { SEM_FILTRO, type Filtros } from './filtros'
 import { compararPilotos } from './ordem'
 import { ComparacaoScreen } from './screens/ComparacaoScreen'
 import { GanharTempoScreen } from './screens/GanharTempoScreen'
@@ -28,6 +29,9 @@ export default function App() {
   // arquivos com outras regras, sem pedir o upload de novo.
   const [arquivos, setArquivos] = useState<File[] | null>(null)
   const [recalculando, setRecalculando] = useState(false)
+  // Filtros de grupo e classe: ficam aqui (e não em cada tela) para valerem
+  // nas duas — a classe escolhida na Comparação vale no "Onde ganhar tempo".
+  const [filtros, setFiltros] = useState<Filtros>(SEM_FILTRO)
   const [erroModo, setErroModo] = useState<string | null>(null)
 
   async function trocarModo(modo: Modo) {
@@ -45,6 +49,7 @@ export default function App() {
 
   function aoConcluirUpload(a: AnaliseSessao, enviados: File[]) {
     setArquivos(enviados)
+    setFiltros(SEM_FILTRO)
     setErroModo(null)
     setAnalise(a)
     // Pré-seleciona os 2 primeiros (melhor volta; na corrida, o resultado).
@@ -204,9 +209,18 @@ export default function App() {
           selecionados={selecionadosOrdenados}
           aoAlternar={alternarSelecionado}
           aoVerGanharTempo={() => setTela('ganhar')}
+          filtros={filtros}
+          aoMudarFiltros={setFiltros}
         />
       )}
-      {tela === 'ganhar' && <GanharTempoScreen analise={analise} selecionados={selecionadosOrdenados} />}
+      {tela === 'ganhar' && (
+        <GanharTempoScreen
+          analise={analise}
+          selecionados={selecionadosOrdenados}
+          filtros={filtros}
+          aoMudarFiltros={setFiltros}
+        />
+      )}
     </div>
   )
 }

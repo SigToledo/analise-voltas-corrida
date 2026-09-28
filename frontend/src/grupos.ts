@@ -3,11 +3,6 @@
 
 import type { GrupoSessao, MetricasPiloto } from './types'
 
-/** Os chips do filtro: null = todos os grupos. */
-export function filtrarPorGrupo(pilotos: MetricasPiloto[], grupo: string | null): MetricasPiloto[] {
-  return grupo === null ? pilotos : pilotos.filter((p) => p.grupo === grupo)
-}
-
 /** "11/09/2026 08:45" -> "08h45" (null se não houver hora). */
 export function horaDoGrupo(dataHora: string | null): string | null {
   const hora = dataHora?.split(' ')[1]

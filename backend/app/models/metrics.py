@@ -258,6 +258,13 @@ class AnaliseSessao(BaseModel):
     )
     pilotos: list[MetricasPiloto] = Field(default_factory=list)
     volta_ideal_equipe: VoltaIdealEquipe
+    voltas_ideais_por_classe: dict[str, VoltaIdealEquipe] = Field(
+        default_factory=dict,
+        description=(
+            "Volta ideal de cada classe (ELITE, MASTER, SUPER…), com a mesma regra da "
+            "do grid. Só existe quando a classe veio do resumo oficial."
+        ),
+    )
     comparacao_setores: list[ComparacaoSetor] = Field(default_factory=list)
     voltas_por_carro: dict[str, list[VoltaLeitura]] = Field(
         default_factory=dict,

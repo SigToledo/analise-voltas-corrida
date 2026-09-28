@@ -281,6 +281,27 @@ def calcular_volta_ideal_equipe(
     return VoltaIdealEquipe(setores=donos, total_s=total, avisos=avisos)
 
 
+def calcular_voltas_ideais_por_classe(
+    pilotos: list[PilotoLaps], classes: dict[str, str], num_setores: int
+) -> dict[str, VoltaIdealEquipe]:
+    """
+    A volta ideal de cada CLASSE (ELITE, MASTER, SUPER…): a mesma regra da
+    volta ideal do grid, só com os pilotos daquela classe. `classes` liga o
+    carro à classe — vem do resumo oficial; carro sem classe fica de fora
+    (não chutamos a classe de ninguém).
+    """
+    # O negrito vale para o relatório inteiro, não para a classe.
+    destaque = _usa_destaque(pilotos)
+    por_classe: dict[str, list[PilotoLaps]] = {}
+    for p in pilotos:
+        if classe := classes.get(p.numero_carro):
+            por_classe.setdefault(classe, []).append(p)
+    return {
+        classe: calcular_volta_ideal_equipe(ps, num_setores, destaque)
+        for classe, ps in sorted(por_classe.items())
+    }
+
+
 def comparar_setores(
     pilotos: list[PilotoLaps], num_setores: int, usa_destaque: bool
 ) -> list[ComparacaoSetor]:
