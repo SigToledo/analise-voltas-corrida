@@ -10,10 +10,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { BarraFiltros } from '../components/Filtros'
 import { RitmoPorTrecho } from '../components/RitmoPorTrecho'
 import { corDoPiloto } from '../cores'
 import { LIMITE_JANELA, marcasEixo, passoMarcadores } from '../escala'
-import { avisoGruposMisturados, filtrarPorGrupo, horaDoGrupo } from '../grupos'
+import { aplicarFiltros, type Filtros } from '../filtros'
+import { avisoGruposMisturados } from '../grupos'
 import { compararPilotos } from '../ordem'
 import { formatarDelta, formatarRelogio, formatarTempo, formatarVelocidade } from '../format'
 import type { AnaliseSessao, MetricasPiloto, TipoVolta } from '../types'
@@ -24,6 +26,8 @@ interface Props {
   selecionados: string[]
   aoAlternar: (numeroCarro: string) => void
   aoVerGanharTempo: () => void
+  filtros: Filtros
+  aoMudarFiltros: (filtros: Filtros) => void
 }
 
 /** Acompanha a largura da janela para adaptar o gráfico em telas estreitas. */
@@ -53,19 +57,20 @@ export function ComparacaoScreen({
   selecionados,
   aoAlternar,
   aoVerGanharTempo,
+  filtros,
+  aoMudarFiltros,
 }: Props) {
   const estreito = useLarguraJanela() < 640
   const modo = analise.modo
-  // Filtro dos chips por grupo (só aparece com grupos juntados). Esconder um
-  // grupo não tira da seleção quem já está no gráfico.
-  const [filtroGrupo, setFiltroGrupo] = useState<string | null>(null)
   const temGrupos = analise.grupos.length > 1
 
   // Pilotos na ordem da sessão: melhor volta (treino/qualy) ou resultado
   // oficial (corrida, quando o RaceFull foi enviado). Sem volta vai para o fim.
   const pilotos = [...analise.pilotos].sort(compararPilotos(modo))
   const mostrarPosicao = modo === 'corrida' && pilotos.some((p) => p.posicao_oficial !== null)
-  const pilotosVisiveis = filtrarPorGrupo(pilotos, temGrupos ? filtroGrupo : null)
+  // Filtros de grupo e classe: mudam só os chips — esconder um grupo ou
+  // classe não tira da seleção quem já está no gráfico.
+  const pilotosVisiveis = aplicarFiltros(pilotos, filtros)
   const avisoGrupos = avisoGruposMisturados(analise.grupos, analise.pilotos, selecionados)
 
   const metricas = new Map(analise.pilotos.map((p) => [p.numero_carro, p]))
@@ -176,33 +181,8 @@ export function ComparacaoScreen({
         Clique nos pilotos para comparar (até {LIMITE_SELECAO}).
       </p>
 
-      {/* Filtro por grupo: Todos | G1 | G2 (sessão com grupos juntados). */}
-      {temGrupos && (
-        <div className="filtro-grupo" role="group" aria-label="Filtrar pilotos por grupo">
-          <button
-            className={filtroGrupo === null ? 'ativo' : ''}
-            aria-pressed={filtroGrupo === null}
-            onClick={() => setFiltroGrupo(null)}
-          >
-            Todos <small>{analise.num_pilotos}</small>
-          </button>
-          {analise.grupos.map((g) => (
-            <button
-              key={g.sigla}
-              className={filtroGrupo === g.sigla ? 'ativo' : ''}
-              aria-pressed={filtroGrupo === g.sigla}
-              title={g.sessao ?? g.rotulo}
-              onClick={() => setFiltroGrupo(g.sigla)}
-            >
-              {g.sigla}
-              <small>
-                {g.num_pilotos}
-                {horaDoGrupo(g.data_hora) && ` · ${horaDoGrupo(g.data_hora)}`}
-              </small>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Filtros: grupo (sessão com grupos juntados) e classe (do resumo). */}
+      <BarraFiltros analise={analise} filtros={filtros} aoMudar={aoMudarFiltros} />
 
       {/* Chips de seleção */}
       <div className="chips">

@@ -310,11 +310,46 @@
 .filtro-grupo button + button {
   border-left: none;
 }
-.filtro-grupo button:first-child {
+.filtro-grupo button:first-of-type {
   border-radius: 3px 0 0 3px;
 }
-.filtro-grupo button:last-child {
+.filtro-grupo button:last-of-type {
   border-radius: 0 3px 3px 0;
+}
+.filtro-grupo {
+  align-items: center;
+}
+.filtro-grupo .rotulo {
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  color: var(--giz-fraco);
+  width: 4.2rem;
+}
+/* Sem resumo, sem classe: a dica diz de onde a classe viria. */
+.dica-filtro {
+  margin: 0 0 0.8rem;
+  font-size: 0.82rem;
+  color: var(--giz-fraco);
+}
+
+/* Volta ideal do grid e, com uma classe escolhida, a da classe ao lado. */
+.ideais.lado-a-lado {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0 1rem;
+}
+/* Card estreito (lado a lado): setores em lista, sem o espaço de "linha". */
+.ideais.lado-a-lado .card-ideal .setores {
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.delta-ideal {
+  color: var(--ambar);
+  font-size: 0.9rem;
+  margin: -0.1rem 0 0.2rem;
 }
 .filtro-grupo button.ativo {
   background: var(--giz);
