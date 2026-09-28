@@ -128,6 +128,13 @@ class PilotoLaps(BaseModel):
     classe: Optional[str] = Field(
         None, description="Classe, quando o próprio Laptimes vem agrupado por classe."
     )
+    grupo: Optional[str] = Field(
+        None,
+        description=(
+            "Grupo da sessão (ex.: 'G1', 'G2', 'SUPER') quando vários Laptimes da "
+            "mesma sessão foram juntados. None numa sessão única."
+        ),
+    )
     voltas: list[VoltaLeitura] = Field(default_factory=list)
 
     @property
