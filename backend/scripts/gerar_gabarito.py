@@ -22,7 +22,7 @@ from app.metrics.calculations import montar_analise_sessao
 from app.parser.laptimes_parser import parse_laptimes
 from app.parser.pdf_texto import LeitorPDF
 from app.parser.resumo_parser import parse_resumo
-from app.parser.tipo_pdf import TipoRelatorio, identificar
+from app.parser.tipo_pdf import TipoRelatorio, TipoSessao, identificar
 
 RAIZ = Path(__file__).resolve().parents[2]
 SAMPLES = RAIZ / "samples"
@@ -57,7 +57,9 @@ def main() -> None:
             if ident.tipo is TipoRelatorio.LAPTIMES:
                 resultado = parse_laptimes(leitor, nome_arquivo=pdf.name)
                 _salvar(base.with_name(base.name + ".parsing.json"), resultado.model_dump())
-                analise = montar_analise_sessao(resultado)
+                # Mesmo modo que a API usa em 'auto': o tipo de sessão do PDF.
+                detectado = ident.metadados.tipo_sessao
+                analise = montar_analise_sessao(resultado, detectado or TipoSessao.TREINO, detectado)
                 analise.metadados = ident.metadados.como_dict()
                 _salvar(base.with_name(base.name + ".analise.json"), analise.model_dump())
             elif ident.tipo in (TipoRelatorio.RESUMO, TipoRelatorio.RESULTADO_CORRIDA):

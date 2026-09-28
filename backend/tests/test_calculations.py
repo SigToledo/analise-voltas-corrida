@@ -92,8 +92,21 @@ def test_voltas_validas_excluem_pit_e_incompletas(pilotos):
     ljose = next(p for p in pilotos if p.numero_carro == "171")
     m = calcular_metricas_piloto(ljose, 3, True)
     assert m.num_voltas_limpas == 5
-    assert m.consistencia_desvio_padrao_s is not None  # >= 2 voltas válidas
     assert m.mediana_voltas_limpas_s is not None
+    assert not m.poucas_voltas
+
+
+def test_mediana_e_consistencia_mad_ljose(pilotos):
+    """Voltas de ritmo de L.JOSE: 141.904, 135.237, 137.458, 134.829, 134.353.
+
+    Mediana = 135.237 (a do meio). Distâncias até ela: 6.667, 0, 2.221, 0.408,
+    0.884 -> MAD = 0.884 (a do meio) -> consistência = 0.884 x 1.4826 = 1.311.
+    A volta 2 (tráfego) quase não mexe no resultado — com o desvio padrão
+    ela sozinha dobraria o número."""
+    ljose = next(p for p in pilotos if p.numero_carro == "171")
+    m = calcular_metricas_piloto(ljose, 3, True)
+    assert m.mediana_voltas_limpas_s == pytest.approx(135.237)
+    assert m.consistencia_s == pytest.approx(1.311)
 
 
 # Coluna "NA" do QualifyReduced = número da volta da melhor marca.
@@ -113,14 +126,16 @@ def test_numero_da_melhor_volta_bate_com_NA(pilotos):
         assert m.numero_volta_melhor == na, carro
 
 
-def test_sstrap_e_outliers_ljose(pilotos):
-    """SSTRAP de L.JOSE: melhor 184.3 km/h (volta 4). A volta 2 (com tráfego)
-    deve ser sinalizada como outlier, sem ser removida da contagem de válidas."""
+def test_radar_e_outliers_ljose(pilotos):
+    """Radar de L.JOSE: máximo 184.3 km/h (volta 4); mediana nas voltas de
+    ritmo (178.2, 182.7, 184.3, 183.1, 184.0) = 183.1. A volta 2 (141.904,
+    tráfego) passa de mediana + 3 x consistência (139.17) e é sinalizada como
+    outlier, sem ser removida da contagem."""
     ljose = next(p for p in pilotos if p.numero_carro == "171")
     m = calcular_metricas_piloto(ljose, 3, True)
-    assert m.melhor_sstrap_kmh == pytest.approx(184.3)
-    assert m.sstrap_medio_kmh is not None
-    assert 2 in m.voltas_outlier
+    assert m.radar_maximo_kmh == pytest.approx(184.3)
+    assert m.radar_mediano_kmh == pytest.approx(183.1)
+    assert m.voltas_outlier == [2]
     assert m.num_voltas_limpas == 5  # outlier sinalizado, não removido
 
 

@@ -23,29 +23,47 @@ de 5 categorias, Cuiabá e Cascavel):
 - "Volta de saída de box": a volta 1 da sessão ou a seguinte a uma volta 'p'.
   O cronômetro não conta parte do tempo parado no box, então o total dessas
   voltas sai irreal. Ficam fora do ritmo, dos melhores setores e do radar.
-- "Volta válida/limpa": não é de box (entrada ou saída), não foi
-  desconsiderada e tem tempo total e TODOS os setores lidos (volta sem um
+- "Volta de ritmo": do tipo 'normal' (lançada, bandeira verde — ver
+  tipos_volta.py: largada, box, Safety Car e relargada ficam de fora), não
+  desconsiderada e com tempo total e TODOS os setores lidos (volta sem um
   setor medido pode ser uma "volta-fantasma" com tempo curto demais).
-- "Melhor volta calculada" (só para relatórios SEM negrito): a volta válida
-  mais rápida. Antes do negrito, foi essa a regra — ela acertava 835/866.
+- "Melhor volta calculada" (só para relatórios SEM negrito): a volta completa
+  fora do box mais rápida. Antes do negrito, foi essa a regra — acertava 835/866.
 - "Melhor volta teórica": soma do melhor tempo de cada setor do piloto.
+
+ESTATÍSTICAS PELA MEDIANA (e não pela média)
+Numa sessão real sempre sobra uma volta com tráfego, bandeira ou erro. A
+MÉDIA é puxada por ela; a MEDIANA (o tempo "do meio" da lista ordenada) não.
+Pelo mesmo motivo a consistência usa o MAD — a mediana das distâncias de cada
+volta até a mediana —, multiplicado por 1,4826 para ficar na mesma escala do
+desvio padrão que o engenheiro conhece. Com menos de 4 voltas de ritmo os
+números saem, mas marcados como "poucas voltas".
 """
 
 import statistics
 from typing import Optional
 
-from app.models.lap_data import PilotoLaps, ResultadoParsingPDF, VoltaLeitura
+from app.metrics.tipos_volta import classificar_voltas
+from app.models.lap_data import PilotoLaps, ResultadoParsingPDF, TipoVolta, VoltaLeitura
 from app.models.metrics import (
     AnaliseSessao,
     ComparacaoSetor,
     DonoDoSetor,
     GapSetorPiloto,
     MetricasPiloto,
+    RitmoTrecho,
     VoltaIdealEquipe,
 )
+from app.parser.tipo_pdf import TipoSessao
 
 # Tolerância para comparar tempos (o cronômetro mede em milésimos).
 _TOL = 0.0005
+# Abaixo disso, mediana e consistência valem como indício ("poucas voltas").
+MIN_VOLTAS_RITMO = 4
+# Fator que põe o MAD na escala do desvio padrão (para dados sem outliers).
+_FATOR_MAD = 1.4826
+# Volta de ritmo mais lenta que mediana + 3 × consistência = provável tráfego.
+_OUTLIER_SIGMAS = 3.0
 
 
 def _melhor_oficial(piloto: PilotoLaps) -> Optional[VoltaLeitura]:
@@ -71,9 +89,36 @@ def _desconsideradas(piloto: PilotoLaps, usa_destaque: bool) -> set[int]:
     return {v.numero_volta for v in _candidatas(piloto) if v.tempo_volta_s < oficial.tempo_volta_s - _TOL}
 
 
-def _voltas_validas(piloto: PilotoLaps, desconsideradas: set[int]) -> list[VoltaLeitura]:
-    """Base do ritmo (mediana), da consistência e dos outliers."""
-    return [v for v in _candidatas(piloto) if v.numero_volta not in desconsideradas]
+def _voltas_ritmo(piloto: PilotoLaps, desconsideradas: set[int]) -> list[VoltaLeitura]:
+    """Base do ritmo (mediana), da consistência e dos outliers: só voltas 'normal'."""
+    return [
+        v for v in _candidatas(piloto)
+        if v.tipo is TipoVolta.NORMAL and v.numero_volta not in desconsideradas
+    ]
+
+
+def consistencia_mad(tempos: list[float]) -> Optional[float]:
+    """Dispersão robusta: MAD × 1,4826. None com menos de 2 tempos."""
+    if len(tempos) < 2:
+        return None
+    mediana = statistics.median(tempos)
+    return round(_FATOR_MAD * statistics.median(abs(t - mediana) for t in tempos), 3)
+
+
+def _ritmo_por_trecho(ritmo: list[VoltaLeitura]) -> list[RitmoTrecho]:
+    por_trecho: dict[int, list[VoltaLeitura]] = {}
+    for v in ritmo:
+        if v.trecho is not None:
+            por_trecho.setdefault(v.trecho, []).append(v)
+    return [
+        RitmoTrecho(
+            trecho=t,
+            voltas=[v.numero_volta for v in voltas],
+            mediana_s=round(statistics.median(v.tempo_volta_s for v in voltas), 3),
+            poucas_voltas=len(voltas) < MIN_VOLTAS_RITMO,
+        )
+        for t, voltas in sorted(por_trecho.items())
+    ]
 
 
 def _melhor_setor(piloto: PilotoLaps, indice: int, desconsideradas: set[int]) -> Optional[float]:
@@ -105,8 +150,8 @@ def calcular_metricas_piloto(
     """Calcula todas as métricas individuais de um piloto."""
     avisos: list[str] = []
     desconsideradas = _desconsideradas(piloto, usa_destaque)
-    validas = _voltas_validas(piloto, desconsideradas)
-    tempos_validos = [v.tempo_volta_s for v in validas]
+    ritmo = _voltas_ritmo(piloto, desconsideradas)
+    tempos_ritmo = [v.tempo_volta_s for v in ritmo]
 
     # --- Melhor volta ---
     origem = None
@@ -117,8 +162,10 @@ def calcular_metricas_piloto(
         origem = "oficial" if oficial else None
         if oficial is None:
             avisos.append("Sem melhor volta oficial (nenhuma volta válida para a cronometragem).")
-    elif validas:
-        v = min(validas, key=lambda v: v.tempo_volta_s)
+    elif candidatas := _candidatas(piloto):
+        # Relatório sem negrito: a volta completa fora do box mais rápida
+        # (largada e Safety Car nunca são as mais rápidas; relargada pode ser).
+        v = min(candidatas, key=lambda v: v.tempo_volta_s)
         melhor_volta, numero_volta_melhor, origem = v.tempo_volta_s, v.numero_volta, "calculada"
     else:
         melhor_volta = numero_volta_melhor = None
@@ -143,30 +190,30 @@ def calcular_metricas_piloto(
         )
     gap = round(melhor_volta - teorica, 3) if melhor_volta is not None and teorica is not None else None
 
-    # --- Ritmo e consistência (voltas válidas) ---
-    mediana = statistics.median(tempos_validos) if tempos_validos else None
-    if not tempos_validos:
-        avisos.append("Sem voltas válidas — sem mediana.")
-    if len(tempos_validos) >= 2:
-        desvio = statistics.stdev(tempos_validos)
-    else:
-        desvio = None
-        avisos.append("Menos de 2 voltas válidas — sem desvio padrão (consistência).")
+    # --- Ritmo e consistência (voltas de ritmo) ---
+    mediana = round(statistics.median(tempos_ritmo), 3) if tempos_ritmo else None
+    consistencia = consistencia_mad(tempos_ritmo)
+    poucas = len(tempos_ritmo) < MIN_VOLTAS_RITMO
+    if not tempos_ritmo:
+        avisos.append("Sem voltas de ritmo (lançadas, fora do box e do Safety Car) — sem mediana.")
+    elif poucas:
+        avisos.append(
+            f"Só {len(tempos_ritmo)} volta(s) de ritmo — mediana e consistência valem como indício."
+        )
 
-    # --- Radar, só em voltas fora do box ---
+    # --- Radar: máximo fora do box; mediana nas voltas de ritmo ---
     radares = [
         v.velocidade_radar_kmh
         for v in piloto.voltas
         if not v.eh_volta_pit and not v.eh_volta_saida_box and v.velocidade_radar_kmh is not None
     ]
-    melhor_radar = max(radares) if radares else None
-    radar_medio = statistics.mean(radares) if radares else None
+    radares_ritmo = [v.velocidade_radar_kmh for v in ritmo if v.velocidade_radar_kmh is not None]
 
     # --- Outliers de tráfego/bandeira (sinalizados, não removidos) ---
     voltas_outlier: list[int] = []
-    if mediana is not None and desvio is not None:
-        limite = mediana + 1.5 * desvio
-        voltas_outlier = [v.numero_volta for v in validas if v.tempo_volta_s > limite]
+    if not poucas and consistencia:
+        limite = mediana + _OUTLIER_SIGMAS * consistencia
+        voltas_outlier = [v.numero_volta for v in ritmo if v.tempo_volta_s > limite]
 
     return MetricasPiloto(
         numero_carro=piloto.numero_carro,
@@ -179,11 +226,13 @@ def calcular_metricas_piloto(
         melhor_volta_teorica_s=teorica,
         gap_real_para_teorica_s=gap,
         mediana_voltas_limpas_s=mediana,
-        consistencia_desvio_padrao_s=desvio,
-        num_voltas_limpas=len(validas),
+        consistencia_s=consistencia,
+        num_voltas_limpas=len(ritmo),
+        poucas_voltas=poucas,
+        ritmo_por_trecho=_ritmo_por_trecho(ritmo),
         melhores_setores_s=setores,
-        melhor_sstrap_kmh=melhor_radar,
-        sstrap_medio_kmh=radar_medio,
+        radar_maximo_kmh=max(radares) if radares else None,
+        radar_mediano_kmh=statistics.median(radares_ritmo) if radares_ritmo else None,
         voltas_outlier=voltas_outlier,
         avisos=avisos,
     )
@@ -265,20 +314,32 @@ def comparar_setores(
     return comparacoes
 
 
-def montar_analise_sessao(resultado: ResultadoParsingPDF) -> AnaliseSessao:
+def montar_analise_sessao(
+    resultado: ResultadoParsingPDF,
+    modo: TipoSessao = TipoSessao.TREINO,
+    modo_detectado: Optional[TipoSessao] = None,
+) -> AnaliseSessao:
     """
     Junta tudo numa única resposta para o frontend: métricas de cada piloto,
     a volta ideal da equipe e a comparação setor a setor de TODO o grid (o
     frontend filtra os pilotos que quiser mostrar).
+
+    `modo` decide as regras (ver tipos_volta.py): na corrida, volta 1 é
+    largada e os Safety Cars são detectados; no treino/qualy, os trechos são
+    as saídas do box. Primeiro classificamos as voltas, depois calculamos.
     """
     pilotos = resultado.pilotos
     n = resultado.num_setores
+    neutralizacoes = classificar_voltas(pilotos, n, modo)
     destaque = _usa_destaque(pilotos)
     return AnaliseSessao(
         arquivo_origem=resultado.arquivo_origem,
         num_pilotos=len(pilotos),
         num_setores=n,
         tem_radar=resultado.tem_radar,
+        modo=modo.value,
+        modo_detectado=modo_detectado.value if modo_detectado else None,
+        neutralizacoes=neutralizacoes,
         pilotos=[calcular_metricas_piloto(p, n, destaque) for p in pilotos],
         volta_ideal_equipe=calcular_volta_ideal_equipe(pilotos, n, destaque),
         comparacao_setores=comparar_setores(pilotos, n, destaque),

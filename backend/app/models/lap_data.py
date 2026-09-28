@@ -9,9 +9,26 @@ Por que Pydantic e não dict puro?
   se um campo pode faltar, ele é None, nunca um valor padrão tipo 0.0.
 """
 
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+
+class TipoVolta(str, Enum):
+    """
+    Que tipo de volta é esta — define se ela entra no RITMO do piloto.
+    Só a 'normal' (volta lançada, em bandeira verde) entra na mediana e na
+    consistência; as demais têm um motivo claro para o tempo não representar
+    o ritmo, e ficam visíveis com esse rótulo.
+    """
+
+    NORMAL = "normal"            # volta lançada, bandeira verde
+    LARGADA = "largada"          # volta 1 de uma corrida (sai parado/lançado atrás do pelotão)
+    SAIDA_BOX = "saida_box"      # volta 1 de treino/qualy ou a seguinte a um 'p'
+    ENTRADA_BOX = "entrada_box"  # volta marcada com 'p' no PDF
+    SAFETY_CAR = "safety_car"    # corrida neutralizada (detectado pelo grid inteiro)
+    RELARGADA = "relargada"      # primeira volta depois de um Safety Car
 
 
 class VoltaLeitura(BaseModel):
@@ -71,6 +88,29 @@ class VoltaLeitura(BaseModel):
             "Campos que EXISTEM no relatório mas não foram lidos nesta volta "
             "(ex: ['setor1_s']). Colunas que o relatório nem tem (ex.: pista sem "
             "radar) não entram aqui."
+        ),
+    )
+
+    # --- Classificação: NÃO vem do PDF, é calculada pela análise ---
+    # (app/metrics/tipos_volta.py). Fica aqui porque o frontend precisa dela
+    # volta a volta, junto dos tempos.
+    tipo: TipoVolta = Field(
+        TipoVolta.NORMAL,
+        description="Tipo da volta (ver TipoVolta). Só 'normal' entra no ritmo.",
+    )
+    neutralizacao: Optional[int] = Field(
+        None,
+        description=(
+            "Número do período de Safety Car (1, 2…) em que esta volta caiu. "
+            "Inferido pelo grid inteiro ficar lento ao mesmo tempo — não é marcação do PDF."
+        ),
+    )
+    trecho: Optional[int] = Field(
+        None,
+        description=(
+            "Trecho da sessão (1, 2…): na corrida, o intervalo de bandeira verde "
+            "entre Safety Cars; no treino/qualy, a saída do box (cada ida à pista). "
+            "None nas voltas de Safety Car."
         ),
     )
 

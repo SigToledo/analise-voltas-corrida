@@ -9,6 +9,9 @@ Rotas:
                     alimentar o parser errado produziria lixo silencioso, então
                     arquivo do tipo errado vira erro claro dizendo O QUE foi
                     enviado.
+                    `modo` (opcional): 'auto' (padrão, lê do PDF), 'treino',
+                    'qualy' ou 'corrida' — define as regras de classificação
+                    das voltas (ver app/metrics/tipos_volta.py).
 
 Para rodar em desenvolvimento, a partir da pasta backend/:
     uvicorn app.main:app --reload
@@ -17,7 +20,7 @@ Para rodar em desenvolvimento, a partir da pasta backend/:
 import os
 import tempfile
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.metrics.calculations import montar_analise_sessao
@@ -25,9 +28,9 @@ from app.models.metrics import AnaliseSessao
 from app.parser.laptimes_parser import parse_laptimes
 from app.parser.pdf_texto import LeitorPDF
 from app.parser.resumo_parser import parse_resumo
-from app.parser.tipo_pdf import NOMES_RELATORIO, Identificacao, TipoRelatorio, identificar
+from app.parser.tipo_pdf import NOMES_RELATORIO, Identificacao, TipoRelatorio, TipoSessao, identificar
 
-app = FastAPI(title="Análise de Voltas — API", version="0.3.0")
+app = FastAPI(title="Análise de Voltas — API", version="0.4.0")
 
 # Libera o frontend (Vite/Tauri em dev) a chamar a API do navegador.
 app.add_middleware(
@@ -38,6 +41,7 @@ app.add_middleware(
 )
 
 _TIPOS_RESUMO = (TipoRelatorio.RESUMO, TipoRelatorio.RESULTADO_CORRIDA)
+_MODOS = {"auto", *(t.value for t in TipoSessao)}
 
 
 @app.get("/health")
@@ -66,13 +70,21 @@ def _descrever(ident: Identificacao) -> str:
 
 
 @app.post("/analise", response_model=AnaliseSessao)
-async def analisar(arquivo: UploadFile, resumo: UploadFile | None = None) -> AnaliseSessao:
+async def analisar(
+    arquivo: UploadFile, resumo: UploadFile | None = None, modo: str = Form("auto")
+) -> AnaliseSessao:
     """
     `arquivo`: o PDF Laptimes — é dele que saem as voltas, setores e radar.
     `resumo` (opcional): o QualifyReduced (treino/qualy) ou o RaceFull
     (corrida) da mesma sessão — acrescenta classe e posição oficial e confere
     a melhor volta calculada contra a oficial.
+    `modo`: 'auto' usa o tipo de sessão escrito no PDF; sem ele, vale treino
+    (a regra mais conservadora: nenhuma volta vira Safety Car).
     """
+    if modo not in _MODOS:
+        raise HTTPException(
+            status_code=400, detail=f"Modo '{modo}' inválido: use auto, treino, qualy ou corrida."
+        )
     # Todos os temporários ficam numa lista e o `finally` apaga todos — antes,
     # um resumo inválido interrompia a função antes do `try` e o PDF principal
     # ficava esquecido no disco.
@@ -114,7 +126,9 @@ async def analisar(arquivo: UploadFile, resumo: UploadFile | None = None) -> Ana
                 status_code=422,
                 detail="Nenhum piloto encontrado no PDF. Confirme que é o relatório 'Laptimes'.",
             )
-        analise = montar_analise_sessao(resultado)
+        detectado = ident.metadados.tipo_sessao
+        modo_final = (detectado or TipoSessao.TREINO) if modo == "auto" else TipoSessao(modo)
+        analise = montar_analise_sessao(resultado, modo_final, detectado)
         analise.metadados = ident.metadados.como_dict()
 
         if caminho_resumo is not None:
