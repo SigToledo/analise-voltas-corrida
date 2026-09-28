@@ -13,6 +13,12 @@ export function formatarTempo(segundos: number | null | undefined): string {
   return resto.toFixed(3)
 }
 
+/** Relógio de prova, sem milésimos: 918.4 -> "15:18". */
+export function formatarRelogio(segundos: number): string {
+  const s = Math.floor(segundos)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
 /** Diferença com sinal, ex: +0.342 ou -0.100. null -> "—". */
 export function formatarDelta(segundos: number | null | undefined): string {
   if (segundos === null || segundos === undefined) return '—'

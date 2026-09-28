@@ -3,15 +3,19 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceArea,
   ResponsiveContainer,
   Scatter,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
+import { RitmoPorTrecho } from '../components/RitmoPorTrecho'
 import { corDoPiloto } from '../cores'
-import { formatarDelta, formatarTempo, formatarVelocidade } from '../format'
-import type { AnaliseSessao, MetricasPiloto } from '../types'
+import { compararPilotos } from '../ordem'
+import { formatarDelta, formatarRelogio, formatarTempo, formatarVelocidade } from '../format'
+import type { AnaliseSessao, MetricasPiloto, TipoVolta } from '../types'
+import { faixasSafetyCar, rotuloVoltas, SIGLA_TIPO, TIPOS_PLOTADOS } from '../voltas'
 
 interface Props {
   analise: AnaliseSessao
@@ -37,8 +41,10 @@ const LIMITE_SELECAO = 4
 
 /**
  * Tela 2 — Comparação entre pilotos.
- * Elemento dominante: gráfico de tempo por volta. Voltas de pit ou sem
- * leitura viram lacuna no gráfico (valor null) — nunca interpoladas.
+ * Elemento dominante: gráfico de tempo por volta. Só as voltas LANÇADAS
+ * viram ponto na linha; largada, box e Safety Car abrem lacuna (valor null,
+ * nunca interpolado) e aparecem como letra ou faixa — o momento é real, o
+ * tempo não representa o ritmo.
  */
 export function ComparacaoScreen({
   analise,
@@ -47,13 +53,16 @@ export function ComparacaoScreen({
   aoVerGanharTempo,
 }: Props) {
   const estreito = useLarguraJanela() < 640
+  const modo = analise.modo
 
-  // Pilotos ordenados por melhor volta (mais rápido primeiro). Quem não tem
-  // volta válida vai para o fim.
-  const pilotos = [...analise.pilotos].sort(ordenarPorMelhorVolta)
+  // Pilotos na ordem da sessão: melhor volta (treino/qualy) ou resultado
+  // oficial (corrida, quando o RaceFull foi enviado). Sem volta vai para o fim.
+  const pilotos = [...analise.pilotos].sort(compararPilotos(modo))
+  const mostrarPosicao = modo === 'corrida' && pilotos.some((p) => p.posicao_oficial !== null)
 
-  // Monta os dados do gráfico: uma linha por volta, com o tempo de cada
-  // piloto selecionado (ou null se for pit / sem leitura).
+  // Dados do gráfico: uma linha por volta, com o tempo de cada selecionado
+  // (null se a volta não é lançada ou não tem leitura) e o tipo, para o
+  // tooltip e o desenho do ponto.
   const maxVolta = Math.max(
     1,
     ...selecionados.flatMap((c) =>
@@ -62,43 +71,37 @@ export function ComparacaoScreen({
   )
   const dadosGrafico = []
   for (let n = 1; n <= maxVolta; n++) {
-    const ponto: Record<string, number | null> = { volta: n }
+    const ponto: Record<string, number | string | null> = { volta: n }
     for (const carro of selecionados) {
       const volta = (analise.voltas_por_carro[carro] ?? []).find((v) => v.numero_volta === n)
-      // Pit, saída de box ou tempo ausente -> null (lacuna no gráfico, sem
-      // interpolar). A saída de box tem total irreal (tempo de box não
-      // contado), então plotá-la enganaria o olho.
-      ponto[carro] =
-        volta && !volta.eh_volta_pit && !volta.eh_volta_saida_box ? volta.tempo_volta_s : null
+      ponto[carro] = volta && TIPOS_PLOTADOS.includes(volta.tipo) ? volta.tempo_volta_s : null
+      ponto[`${carro}#tipo`] = volta?.tipo ?? null
     }
     dadosGrafico.push(ponto)
   }
 
   // Escala do eixo Y focada nas voltas de RITMO. Sem isso, uma única volta
-  // lenta (tráfego/saída de box, 4-5 min) estica o eixo e espreme todas as
-  // voltas boas numa faixa ilegível no rodapé. Calculamos a janela só com
-  // voltas "limpas" (não-pit, completas e não marcadas como outlier); os
-  // pontos lentos continuam plotados (a linha sobe e sai pelo topo), mas a
-  // escala fica útil para comparar ritmo.
+  // lenta (tráfego, 4-5 min) estica o eixo e espreme todas as voltas boas
+  // numa faixa ilegível no rodapé. A janela usa só voltas lançadas,
+  // completas, que não são outlier nem desconsideradas; o que passar disso
+  // continua plotado (a linha sai pelo topo), mas a escala fica útil.
   const temposLimpos: number[] = []
   for (const carro of selecionados) {
     const metr = analise.pilotos.find((p) => p.numero_carro === carro)
-    // Fora da escala: tráfego (outliers) e voltas desconsideradas pela
-    // cronometragem (mais rápidas que a oficial — canceladas).
-    const outliers = new Set([
+    const fora = new Set([
       ...(metr?.voltas_outlier ?? []),
       ...(metr?.voltas_desconsideradas ?? []),
     ])
     for (const v of analise.voltas_por_carro[carro] ?? []) {
       const completa = v.tempo_volta_s !== null && v.setores_s.every((s) => s !== null)
-      if (!v.eh_volta_pit && !v.eh_volta_saida_box && completa && !outliers.has(v.numero_volta)) {
+      if (v.tipo === 'normal' && completa && !fora.has(v.numero_volta)) {
         temposLimpos.push(v.tempo_volta_s as number)
       }
     }
   }
   const temJanela = temposLimpos.length > 0
-  // Reserva uma faixa no rodapé do gráfico para os marcadores de box
-  // (uma "linha" por piloto, para não se sobreporem).
+  // Reserva uma faixa no rodapé do gráfico para os marcadores (uma "linha"
+  // por piloto, para não se sobreporem).
   const folgaMarcadores = temJanela ? 0.7 + selecionados.length * 0.55 : 0
   const yDomain: [number, number] | ['auto', 'auto'] = temJanela
     ? [
@@ -107,22 +110,26 @@ export function ComparacaoScreen({
       ]
     : ['auto', 'auto']
 
-  // Marcadores de box por piloto: "P" na volta em que ENTROU no box (volta
-  // 'p' do PDF) e "S" na volta de SAÍDA. Essas voltas não têm tempo confiável
-  // (por isso a linha abre lacuna), mas o momento em que aconteceram é
-  // informação real — o marcador mostra o quando, sem inventar o quanto.
-  const marcadoresBox = temJanela
+  // Marcadores por piloto: P (entrou no box), S (saída do box), L (largada).
+  const marcadores = temJanela
     ? selecionados.map((carro, i) => ({
         carro,
         pontos: (analise.voltas_por_carro[carro] ?? [])
-          .filter((v) => v.eh_volta_pit || v.eh_volta_saida_box)
+          .filter((v) => SIGLA_TIPO[v.tipo])
           .map((v) => ({
             volta: v.numero_volta,
             nivel: (yDomain[0] as number) + 0.55 + i * 0.55,
-            simbolo: v.eh_volta_pit ? 'P' : 'S',
+            simbolo: SIGLA_TIPO[v.tipo],
           })),
       }))
     : []
+  const siglasUsadas = new Set(marcadores.flatMap((m) => m.pontos.map((p) => p.simbolo)))
+
+  // Faixas de Safety Car (só no modo corrida), nas voltas dos selecionados.
+  const faixasSC = faixasSafetyCar(analise.voltas_por_carro, selecionados)
+  const temRelargada = selecionados.some((c) =>
+    (analise.voltas_por_carro[c] ?? []).some((v) => v.tipo === 'relargada'),
+  )
 
   // Para a tabela de melhor volta: o mais rápido entre os SELECIONADOS.
   const melhoresSelecionados = selecionados
@@ -132,9 +139,14 @@ export function ComparacaoScreen({
     melhoresSelecionados.length > 0
       ? Math.min(...melhoresSelecionados.map((p) => p.melhor_volta_s as number))
       : null
+  const algumPoucasVoltas = selecionados.some(
+    (c) => analise.pilotos.find((p) => p.numero_carro === c)?.poucas_voltas,
+  )
 
   return (
     <div>
+      {modo === 'corrida' && <FaixaSafetyCar analise={analise} />}
+
       <p className="status" style={{ textAlign: 'left', marginTop: 0 }}>
         Clique nos pilotos para comparar (até {LIMITE_SELECAO}).
       </p>
@@ -154,6 +166,11 @@ export function ComparacaoScreen({
             >
               <span className="nome">
                 {sel && <i className="ponto" style={{ background: cor }} />}
+                {mostrarPosicao && (
+                  <span className="posicao num">
+                    {p.posicao_oficial !== null ? `P${p.posicao_oficial}` : 'NC'}
+                  </span>
+                )}
                 ({p.numero_carro}) {p.nome}
                 {p.classe && <span className="classe">{p.classe}</span>}
               </span>
@@ -202,29 +219,74 @@ export function ComparacaoScreen({
                 tick={{ fontSize: estreito ? 11 : 13 }}
                 tickFormatter={(s) => formatarTempo(s as number)}
               />
+              {/* Faixa amarela = provável Safety Car (desenhada antes das
+                  linhas, para ficar atrás delas). */}
+              {faixasSC.map((f) => (
+                <ReferenceArea
+                  key={`sc-${f.numero}`}
+                  x1={Math.max(1, f.de - 0.5)}
+                  x2={Math.min(maxVolta, f.ate + 0.5)}
+                  fill="var(--ambar)"
+                  fillOpacity={0.13}
+                  stroke="none"
+                  ifOverflow="hidden"
+                  label={{
+                    value: faixasSC.length > 1 ? `SC${f.numero}` : 'SC',
+                    position: 'insideTop',
+                    fill: 'var(--ambar)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                />
+              ))}
               <Tooltip
                 contentStyle={{ background: 'var(--painel)', border: '1px solid var(--risco)' }}
                 labelStyle={{ color: 'var(--giz)' }}
-                formatter={(valor, nome) => [formatarTempo(valor as number), `Carro ${nome}`]}
+                formatter={(valor, nome, item) => {
+                  const tipo = (item?.payload as Record<string, unknown> | undefined)?.[`${nome}#tipo`]
+                  const extra = tipo === 'relargada' ? ' (relargada)' : ''
+                  return [`${formatarTempo(valor as number)}${extra}`, `Carro ${nome}`]
+                }}
                 labelFormatter={(l) => `Volta ${l}`}
               />
-              {selecionados.map((carro) => (
-                <Line
-                  key={carro}
-                  type="monotone"
-                  dataKey={carro}
-                  stroke={corDoPiloto(selecionados, carro)}
-                  strokeWidth={2.5}
-                  dot={{ r: 3 }}
-                  connectNulls={false}
-                  isAnimationActive={false}
-                />
-              ))}
-              {/* Marcadores de box: letra "P" (entrou) / "S" (saindo) na cor
-                  do piloto, numa faixa própria no rodapé do gráfico. */}
-              {marcadoresBox.map(({ carro, pontos }) => (
+              {selecionados.map((carro) => {
+                const cor = corDoPiloto(selecionados, carro)
+                return (
+                  <Line
+                    key={carro}
+                    type="monotone"
+                    dataKey={carro}
+                    stroke={cor}
+                    strokeWidth={2.5}
+                    // Relargada: círculo vazado (volta lançada, mas logo após
+                    // o SC — pneu frio e pelotão junto).
+                    dot={(props: {
+                      cx?: number
+                      cy?: number
+                      index?: number
+                      payload?: Record<string, unknown>
+                    }) => {
+                      const chave = `${carro}-${props.index}`
+                      if (props.cx == null || props.cy == null || props.payload?.[carro] == null) {
+                        return <g key={chave} />
+                      }
+                      const tipo = props.payload?.[`${carro}#tipo`] as TipoVolta | undefined
+                      return tipo === 'relargada' ? (
+                        <circle key={chave} cx={props.cx} cy={props.cy} r={4} fill="var(--pista)" stroke={cor} strokeWidth={2} />
+                      ) : (
+                        <circle key={chave} cx={props.cx} cy={props.cy} r={3} fill={cor} stroke={cor} />
+                      )
+                    }}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                )
+              })}
+              {/* Marcadores P / S / L na cor do piloto, numa faixa própria no
+                  rodapé do gráfico. */}
+              {marcadores.map(({ carro, pontos }) => (
                 <Scatter
-                  key={`box-${carro}`}
+                  key={`marca-${carro}`}
                   data={pontos}
                   dataKey="nivel"
                   isAnimationActive={false}
@@ -250,15 +312,39 @@ export function ComparacaoScreen({
       )}
 
       {selecionados.length > 0 && temJanela && (
-        <p className="status" style={{ textAlign: 'left', fontSize: '0.82rem', marginTop: 0 }}>
-          Na faixa de baixo: <b>P</b> = volta em que entrou no box · <b>S</b> = volta de saída do
-          box (tempos dessas voltas não contam na análise).
+        <p className="status legenda-grafico">
+          {siglasUsadas.has('L') && (
+            <span>
+              <b>L</b> largada
+            </span>
+          )}
+          {siglasUsadas.has('P') && (
+            <span>
+              <b>P</b> entrou no box
+            </span>
+          )}
+          {siglasUsadas.has('S') && (
+            <span>
+              <b>S</b> saída do box
+            </span>
+          )}
+          {faixasSC.length > 0 && (
+            <span>
+              <b className="sc">SC</b> provável Safety Car
+            </span>
+          )}
+          {temRelargada && (
+            <span>
+              <b>○</b> relargada
+            </span>
+          )}
+          <span>— só as voltas lançadas viram ponto na linha.</span>
         </p>
       )}
 
-      {/* Tabela de melhor volta com delta para o mais rápido entre selecionados */}
+      {/* Resumo dos selecionados: colunas conforme o modo. */}
       <div className="secao" style={{ marginTop: '1.5rem' }}>
-        <h2>Melhor volta dos selecionados</h2>
+        <h2>Resumo dos selecionados</h2>
         <div className="tabela-rolavel">
           <table className="dados">
             <thead>
@@ -267,9 +353,25 @@ export function ComparacaoScreen({
                 <th>Melhor volta</th>
                 <th>Volta nº</th>
                 <th>Delta</th>
-                <th>Mediana</th>
-                <th>Consistência (s)</th>
-                <th>Vel. radar (km/h)</th>
+                {modo === 'qualy' ? (
+                  <>
+                    <th title="Soma dos melhores setores do próprio piloto">Teórica</th>
+                    <th title="Melhor volta − teórica: o que ficou na mesa">Na mesa</th>
+                  </>
+                ) : (
+                  <>
+                    <th title="Mediana das voltas lançadas (sem largada, box, SC e relargada)">
+                      Ritmo (mediana)
+                    </th>
+                    <th title="Dispersão típica das voltas lançadas (MAD × 1,4826): quanto menor, mais constante">
+                      Consistência
+                    </th>
+                  </>
+                )}
+                {analise.tem_radar && <th>Radar máx.</th>}
+                {analise.tem_radar && modo !== 'qualy' && (
+                  <th title="Mediana do radar nas voltas lançadas">Radar mediano</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -281,6 +383,7 @@ export function ComparacaoScreen({
                   refMelhor !== null && p.melhor_volta_s !== null
                     ? p.melhor_volta_s - refMelhor
                     : null
+                const indicio = p.poucas_voltas ? ' indicio' : ''
                 return (
                   <tr key={carro}>
                     <td style={{ color: corDoPiloto(selecionados, carro) }}>
@@ -297,19 +400,40 @@ export function ComparacaoScreen({
                       </>
                     )}
                     <td className="num">{delta === 0 ? '—' : formatarDelta(delta)}</td>
-                    <td className="num">{formatarTempo(p.mediana_voltas_limpas_s)}</td>
-                    <td className="num">
-                      {p.consistencia_desvio_padrao_s === null
-                        ? '—'
-                        : p.consistencia_desvio_padrao_s.toFixed(3)}
-                    </td>
-                    <td className="num">{formatarVelocidade(p.melhor_sstrap_kmh)}</td>
+                    {modo === 'qualy' ? (
+                      <>
+                        <td className="num">{formatarTempo(p.melhor_volta_teorica_s)}</td>
+                        <td className="num">{formatarDelta(p.gap_real_para_teorica_s)}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className={`num${indicio}`}>
+                          {formatarTempo(p.mediana_voltas_limpas_s)}
+                          {p.poucas_voltas && p.mediana_voltas_limpas_s !== null && '*'}
+                          <div className="sub">{p.num_voltas_limpas} v.</div>
+                        </td>
+                        <td className={`num${indicio}`}>
+                          {p.consistencia_s === null ? '—' : `±${p.consistencia_s.toFixed(3)}`}
+                        </td>
+                      </>
+                    )}
+                    {analise.tem_radar && (
+                      <td className="num">{formatarVelocidade(p.radar_maximo_kmh)}</td>
+                    )}
+                    {analise.tem_radar && modo !== 'qualy' && (
+                      <td className="num">{formatarVelocidade(p.radar_mediano_kmh)}</td>
+                    )}
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
+        {modo !== 'qualy' && algumPoucasVoltas && (
+          <p className="status" style={{ textAlign: 'left', fontSize: '0.8rem', marginTop: '-0.8rem' }}>
+            * menos de 4 voltas lançadas — ritmo e consistência valem como indício.
+          </p>
+        )}
 
         {selecionados.length > 0 && (
           <button className="cta-ganhar" onClick={aoVerGanharTempo}>
@@ -317,12 +441,45 @@ export function ComparacaoScreen({
           </button>
         )}
       </div>
+
+      {modo !== 'qualy' && selecionados.length > 0 && (
+        <RitmoPorTrecho analise={analise} selecionados={selecionados} />
+      )}
     </div>
   )
 }
 
-function ordenarPorMelhorVolta(a: MetricasPiloto, b: MetricasPiloto): number {
-  if (a.melhor_volta_s === null) return 1
-  if (b.melhor_volta_s === null) return -1
-  return a.melhor_volta_s - b.melhor_volta_s
+/** Aviso dos prováveis Safety Cars da corrida, com voltas e horário. */
+function FaixaSafetyCar({ analise }: { analise: AnaliseSessao }) {
+  const periodos = analise.neutralizacoes
+  return (
+    <div className="faixa-sc">
+      {periodos.length === 0 ? (
+        <span>
+          <b>Nenhum Safety Car detectado</b> — em nenhum momento o grid inteiro ficou lento junto.
+        </span>
+      ) : (
+        <>
+          <b>
+            {periodos.length === 1
+              ? '1 provável Safety Car'
+              : `${periodos.length} prováveis Safety Cars`}
+          </b>
+          <ul>
+            {periodos.map((p) => (
+              <li key={p.numero}>
+                SC{p.numero} · {rotuloVoltas(p.volta_inicial_lider, p.volta_final_lider)} do líder · ~
+                {formatarRelogio(p.inicio_s)} a ~{formatarRelogio(p.fim_s)} de prova
+              </li>
+            ))}
+          </ul>
+          <div className="nota">
+            Inferido dos tempos: o PDF não marca Safety Car, mas o grid inteiro fica lento ao mesmo
+            tempo (tráfego ou erro afetam um piloto só). Essas voltas, a largada e as relargadas
+            ficam fora do ritmo.
+          </div>
+        </>
+      )}
+    </div>
+  )
 }

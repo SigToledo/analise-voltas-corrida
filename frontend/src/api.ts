@@ -1,4 +1,4 @@
-import type { AnaliseSessao } from './types'
+import type { AnaliseSessao, Modo } from './types'
 
 // Base da API. Em desenvolvimento usamos caminho relativo ("/analise"), que o
 // proxy do Vite encaminha para o backend. No app empacotado (Tauri) não há
@@ -7,17 +7,25 @@ import type { AnaliseSessao } from './types'
 const API_BASE = import.meta.env.PROD ? 'http://localhost:8000' : ''
 
 /**
- * Envia o PDF Laptimes (e, se houver, o resumo QualifyReduced) para o backend
- * e devolve a análise.
+ * Envia o PDF Laptimes (e, se houver, o resumo QualifyReduced/RaceFull) para
+ * o backend e devolve a análise.
+ *
+ * `modo`: 'auto' deixa o backend ler do PDF se foi treino, qualy ou corrida;
+ * os demais forçam as regras daquele tipo (o usuário escolhe na tela).
  *
  * Lança um Error com mensagem amigável se o backend recusar um arquivo (ex:
  * tipo errado de relatório), para a tela de upload mostrar o erro sem
  * inventar nenhum dado.
  */
-export async function analisarPdf(arquivo: File, resumo?: File | null): Promise<AnaliseSessao> {
+export async function analisarPdf(
+  arquivo: File,
+  resumo?: File | null,
+  modo: Modo | 'auto' = 'auto',
+): Promise<AnaliseSessao> {
   const form = new FormData()
   form.append('arquivo', arquivo)
   if (resumo) form.append('resumo', resumo)
+  form.append('modo', modo)
 
   let resposta: Response
   try {

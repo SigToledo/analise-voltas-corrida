@@ -4,6 +4,21 @@
 // Importante: campos que o PDF pode não trazer são `number | null`. `null`
 // significa "não foi lido" — nunca tratar como 0 nem inventar no gráfico.
 
+/** Regras de análise: definem o que é largada, Safety Car e trecho. */
+export type Modo = 'treino' | 'qualy' | 'corrida'
+
+/**
+ * Tipo da volta (calculado pelo backend, não vem do PDF). Só 'normal' entra
+ * no ritmo; as outras têm um motivo claro para o tempo não representá-lo.
+ */
+export type TipoVolta =
+  | 'normal'
+  | 'largada'
+  | 'saida_box'
+  | 'entrada_box'
+  | 'safety_car'
+  | 'relargada'
+
 export interface VoltaLeitura {
   numero_volta: number
   eh_volta_pit: boolean
@@ -17,6 +32,11 @@ export interface VoltaLeitura {
   setores_s: (number | null)[]
   velocidade_radar_kmh: number | null
   campos_ausentes: string[]
+  tipo: TipoVolta
+  /** Nº do provável Safety Car em que a volta caiu (inferido pelo grid). */
+  neutralizacao: number | null
+  /** Trecho: entre SCs (corrida) ou saída do box (treino/qualy). */
+  trecho: number | null
 }
 
 export interface MetadadosSessao {
@@ -26,7 +46,26 @@ export interface MetadadosSessao {
   data_hora: string | null
   duracao: string | null
   etapa: string | null
-  tipo_sessao: 'treino' | 'qualy' | 'corrida' | null
+  tipo_sessao: Modo | null
+}
+
+export interface RitmoTrecho {
+  trecho: number
+  /** Voltas de ritmo do trecho que entraram na mediana. */
+  voltas: number[]
+  mediana_s: number | null
+  /** Menos de 4 voltas: vale como indício. */
+  poucas_voltas: boolean
+}
+
+/** Provável Safety Car: a maioria do grid lenta ao mesmo tempo. */
+export interface PeriodoNeutralizacao {
+  numero: number
+  /** Segundos de prova, aproximados (soma das voltas). */
+  inicio_s: number
+  fim_s: number
+  volta_inicial_lider: number | null
+  volta_final_lider: number | null
 }
 
 export interface MetricasPiloto {
@@ -41,13 +80,18 @@ export interface MetricasPiloto {
   voltas_desconsideradas: number[]
   melhor_volta_teorica_s: number | null
   gap_real_para_teorica_s: number | null
+  /** Mediana das voltas de ritmo (tipo 'normal'). */
   mediana_voltas_limpas_s: number | null
-  consistencia_desvio_padrao_s: number | null
+  /** Dispersão robusta (MAD × 1,4826), em segundos. */
+  consistencia_s: number | null
   num_voltas_limpas: number
+  /** Menos de 4 voltas de ritmo: mediana e consistência valem como indício. */
+  poucas_voltas: boolean
+  ritmo_por_trecho: RitmoTrecho[]
   numero_volta_melhor: number | null
   melhores_setores_s: (number | null)[]
-  melhor_sstrap_kmh: number | null
-  sstrap_medio_kmh: number | null
+  radar_maximo_kmh: number | null
+  radar_mediano_kmh: number | null
   voltas_outlier: number[]
   avisos: string[]
 }
@@ -86,6 +130,10 @@ export interface AnaliseSessao {
   num_pilotos: number
   num_setores: number
   tem_radar: boolean
+  modo: Modo
+  /** Tipo de sessão lido do PDF (o usuário pode escolher outro modo). */
+  modo_detectado: Modo | null
+  neutralizacoes: PeriodoNeutralizacao[]
   metadados: MetadadosSessao | null
   pilotos: MetricasPiloto[]
   volta_ideal_equipe: VoltaIdealEquipe
