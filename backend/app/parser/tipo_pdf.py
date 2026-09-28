@@ -1,124 +1,190 @@
 """
-Detecção do TIPO de relatório PDF e extração dos metadados do cabeçalho.
+Identificação do RELATÓRIO (qual PDF é) e da SESSÃO (treino, qualy, corrida),
+mais os metadados do cabeçalho.
 
-A equipe recebe três relatórios da mesma sessão (sistema Orbits/MyLaps):
+Uma etapa gera muitos relatórios (Orbits/MyLaps). O app analisa:
+- LAPTIMES: volta a volta, com setores e radar — a fonte da análise;
+- RESUMO: "QualifyReduced" de treino/qualy (ranking por melhor volta);
+- RESULTADO_CORRIDA: "RaceFull" (classificação final da prova).
+Os demais (consolidado, pódio, parcial por hora, grid de largada, lapchart)
+são reconhecidos para dar uma mensagem clara, mas não analisados.
 
-1. "Laptimes"  — volta a volta, com setores e radar. Tem o cabeçalho de
-   tabela "Lap  Lap Tm  S1 Tm ... SSTRAP" e a linha "Practice (mm:ss Time)".
-2. "QualifyReduced" — resumo geral (Pos, No., Name, Class, Laps, Best Tm,
-   Diff, NA). Tem o selo "Sorted on best lap time" no topo.
-3. "QualifyReduced BY CLASS" — mesmo resumo, mas agrupado por classe
-   (ELITE / MASTER), com o nome da classe numa linha própria e a numeração
-   de posição reiniciando dentro de cada classe.
-
-Cada tipo pede um parser diferente — alimentar o parser errado produziria
-lixo silencioso, então a detecção vem ANTES de qualquer parsing.
+A identificação vem ANTES de qualquer parsing: alimentar o parser errado
+produziria lixo silencioso. Ela usa os TÍTULOS da tabela (não o nome do
+arquivo, que o usuário pode renomear) e a linha da sessão ("Practice (...)",
+"Qualifying (...)", "Race (...)").
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+import re
+from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Optional
 
-import pdfplumber
-
-from app.parser.laptimes_parser import _extrair_palavras_da_pagina
+from app.parser.cabecalho import Coluna, ler_titulos
+from app.parser.pdf_texto import LeitorPDF, Palavra, agrupar_linhas, celulas
 
 
-class TipoPDF(str, Enum):
+class TipoRelatorio(str, Enum):
     LAPTIMES = "laptimes"
-    QUALIFY = "qualify"
-    QUALIFY_POR_CLASSE = "qualify_por_classe"
+    RESUMO = "resumo"
+    RESULTADO_CORRIDA = "resultado_corrida"
+    NAO_SUPORTADO = "nao_suportado"
     DESCONHECIDO = "desconhecido"
+
+
+class TipoSessao(str, Enum):
+    TREINO = "treino"
+    QUALY = "qualy"
+    CORRIDA = "corrida"
+
+
+NOMES_RELATORIO = {
+    TipoRelatorio.LAPTIMES: "Laptimes (volta a volta)",
+    TipoRelatorio.RESUMO: "resumo QualifyReduced",
+    TipoRelatorio.RESULTADO_CORRIDA: "resultado de corrida (RaceFull)",
+    TipoRelatorio.NAO_SUPORTADO: "relatório não suportado",
+    TipoRelatorio.DESCONHECIDO: "formato não reconhecido",
+}
 
 
 @dataclass
 class MetadadosSessao:
-    """Cabeçalho comum aos três relatórios (extraído, nunca inventado)."""
+    """Cabeçalho comum aos relatórios (extraído, nunca inventado)."""
 
-    evento: Optional[str] = None        # ex: "ET4 - F TRUCK / MBR - 2026"
-    pista: Optional[str] = None         # ex: "AUTODROMO DE CUIABA 4,500 km"
-    sessao: Optional[str] = None        # ex: "4o TREINO OFICIAL MBR - GRUPO 1"
-    data_hora: Optional[str] = None     # ex: "13/06/2026 08:00"
-    duracao: Optional[str] = None       # ex: "Practice (30:00 Time) started at 9:13:13"
+    evento: str | None = None       # ex: "FORMULA TRUCK - MBR | CASCAVEL 2026"
+    etapa: str | None = None        # ex: "5ET - MBR"
+    pista: str | None = None        # ex: "Autódromo Zilmar Beux Cascavel 3,058 km"
+    sessao: str | None = None       # ex: "1º TREINO OFICIAL MBR - GRUPO 1"
+    data_hora: str | None = None    # ex: "11/09/2026 08:45"
+    duracao: str | None = None      # ex: "Practice (20:00 Time) started at 9:05:33"
+    tipo_sessao: TipoSessao | None = None
 
-
-def _linhas_de_texto(palavras) -> list[str]:
-    """Agrupa as palavras da página em linhas de texto simples (por altura)."""
-    linhas: dict[int, list] = {}
-    for p in palavras:
-        chave = round(p.top / 4)  # tolerância de ~4pt agrupa a mesma linha
-        linhas.setdefault(chave, []).append(p)
-    resultado = []
-    for chave in sorted(linhas):
-        ordenadas = sorted(linhas[chave], key=lambda w: w.x0)
-        resultado.append(" ".join(w.texto for w in ordenadas))
-    return resultado
+    def como_dict(self) -> dict:
+        d = asdict(self)
+        d["tipo_sessao"] = self.tipo_sessao.value if self.tipo_sessao else None
+        return d
 
 
-def detectar_tipo_pdf(caminho_pdf: str) -> tuple[TipoPDF, MetadadosSessao]:
+@dataclass
+class Identificacao:
+    tipo: TipoRelatorio
+    metadados: MetadadosSessao
+    agrupado_por_classe: bool = False
+    detalhe: str | None = None      # ex: "consolidado de sessões" (p/ não suportados)
+
+
+_RE_LINHA_SESSAO = re.compile(r"^(Practice|Qualifying|Race)\b.*(\(|started)")
+_RE_DATA = re.compile(r"^\d{2}/\d{2}/\d{4}( \d{1,2}:\d{2})?$")
+
+
+def tipo_sessao_de(duracao: str | None, nome_sessao: str | None) -> TipoSessao | None:
     """
-    Lê APENAS a primeira página e decide qual dos três relatórios é,
-    devolvendo junto os metadados do cabeçalho.
+    Tipo da sessão pela linha "Practice/Qualifying/Race (...)". Classificatórios
+    às vezes rodam como "Practice" no cronômetro — o nome da sessão
+    ("CLASSIFICATORIO", "TOP QUALIFYING") desempata. Sem nenhuma pista, None.
     """
-    with pdfplumber.open(caminho_pdf) as pdf:
-        palavras = _extrair_palavras_da_pagina(pdf.pages[0])
-
-    linhas = _linhas_de_texto(palavras)
-    texto = "\n".join(linhas)
-    meta = _extrair_metadados(linhas)
-
-    tem_laptimes = "Lap Tm" in texto and "SSTRAP" in texto
-    tem_resumo = "Sorted on best lap time" in texto or (
-        "Best Tm" in texto and "Diff" in texto
-    )
-
-    if tem_laptimes:
-        return TipoPDF.LAPTIMES, meta
-
-    if tem_resumo:
-        # BY CLASS: alguma linha é SÓ o nome de uma classe (seção do grupo).
-        # No resumo plano, a classe aparece sempre no meio da linha do piloto.
-        for linha in linhas:
-            candidata = linha.strip()
-            if candidata and candidata.isupper() and " " not in candidata and len(candidata) <= 12:
-                # linha curta, toda maiúscula, sem espaços — cabeçalho de classe
-                # (ex: "ELITE", "MASTER"). Cabeçalhos gerais como "MBR" também
-                # casam, então exigimos que ela apareça TAMBÉM como coluna de
-                # classe em alguma linha de piloto.
-                if any(f" {candidata} " in outra for outra in linhas if outra != linha):
-                    return TipoPDF.QUALIFY_POR_CLASSE, meta
-        return TipoPDF.QUALIFY, meta
-
-    return TipoPDF.DESCONHECIDO, meta
+    nome = (nome_sessao or "").upper()
+    parece_qualy = "CLASSIF" in nome or "QUALIF" in nome
+    if duracao:
+        if duracao.startswith("Race"):
+            return TipoSessao.CORRIDA
+        if duracao.startswith("Qualifying") or parece_qualy:
+            return TipoSessao.QUALY
+        return TipoSessao.TREINO
+    if "CORRIDA" in nome or "RACE" in nome:
+        return TipoSessao.CORRIDA
+    if parece_qualy:
+        return TipoSessao.QUALY
+    if "TREINO" in nome or "WARM" in nome or "PRACTICE" in nome:
+        return TipoSessao.TREINO
+    return None
 
 
-def _extrair_metadados(linhas: list[str]) -> MetadadosSessao:
+def extrair_metadados(linhas_acima: list[list[Palavra]]) -> MetadadosSessao:
     """
-    Extrai o cabeçalho comum. As linhas típicas (na ordem do PDF):
-      "ET4 - F TRUCK / MBR - 2026"           -> evento
-      "MBR AUTODROMO DE CUIABA 4,500 km"     -> pista (após o nome do camp.)
-      "4o TREINO OFICIAL MBR - GRUPO 1 13/06/2026 08:00" -> sessão + data
-      "Practice (30:00 Time) started at 9:13:13"          -> duração
-    O layout junta células vizinhas na mesma linha, então usamos âncoras
-    (padrões como "km", data dd/mm/aaaa) em vez de posições fixas.
+    Metadados a partir das linhas ACIMA da tabela, lidas célula a célula (o
+    PDF põe duas informações na mesma altura, ex.: nome da sessão à esquerda e
+    data à direita). Reconhece cada informação pelo formato, não pela posição.
     """
-    import re
-
     meta = MetadadosSessao()
-    for linha in linhas[:12]:  # só o cabeçalho; a tabela vem depois
-        limpa = linha.strip()
-        if meta.evento is None and re.search(r"\b\d{4}\b", limpa) and " - " in limpa and "km" not in limpa:
-            meta.evento = limpa
+    for linha in linhas_acima:
+        cels = [c for c in celulas(linha) if not c.startswith("Sorted on")]
+        if not cels:
             continue
-        m = re.search(r"([A-ZÀ-Ú][A-ZÀ-Ú .]+ [\d.,]+ km)", limpa)
-        if meta.pista is None and m:
-            meta.pista = m.group(1).strip()
+        texto = " ".join(cels)
+        if meta.duracao is None and _RE_LINHA_SESSAO.match(texto):
+            meta.duracao = texto
             continue
-        m = re.search(r"^(.*?)\s*(\d{2}/\d{2}/\d{4}(?: \d{2}:\d{2})?)\s*$", limpa)
-        if meta.sessao is None and m and m.group(1).strip():
-            meta.sessao = m.group(1).strip()
-            meta.data_hora = m.group(2)
+        pista = next((c for c in cels if re.search(r"\bkm$", c)), None)
+        if pista and meta.pista is None:
+            meta.pista = pista
+            outras = [c for c in cels if c != pista]
+            meta.etapa = outras[0] if outras else None
             continue
-        if meta.duracao is None and "started at" in limpa:
-            meta.duracao = limpa
+        data = next((c for c in cels if _RE_DATA.match(c)), None)
+        if data and meta.data_hora is None:
+            meta.data_hora = data
+            outras = [c for c in cels if c != data]
+            meta.sessao = " ".join(outras) or None
+            continue
+        if meta.evento is None and re.search(r"\b\d{4}\b", texto):
+            meta.evento = cels[0]
+    meta.tipo_sessao = tipo_sessao_de(meta.duracao, meta.sessao)
     return meta
+
+
+def localizar_cabecalho(linhas: list[list[Palavra]]) -> tuple[int, list[Coluna]] | None:
+    """Índice e colunas da linha de títulos da tabela (a 1ª com "Lap Tm" ou "Pos")."""
+    for i, linha in enumerate(linhas):
+        colunas = ler_titulos(linha)
+        titulos = {c.titulo for c in colunas}
+        if "Lap Tm" in titulos or (colunas and colunas[0].titulo == "Pos"):
+            return i, colunas
+    return None
+
+
+def _tem_secoes_de_classe(linhas_dados: list[list[Palavra]], colunas: list[Coluna]) -> bool:
+    """
+    BY CLASS: entre as linhas de pilotos aparecem linhas com SÓ o nome da
+    classe ("ELITE", "MASTER"), começando à esquerda da coluna "No.".
+    """
+    col_no = next((c for c in colunas if c.titulo in ("No.", "No")), None)
+    limite = col_no.x0 if col_no else 60.0
+    for linha in linhas_dados:
+        if 1 <= len(linha) <= 3 and linha[0].x0 < limite and not any(
+            ch.isdigit() for p in linha for ch in p.texto
+        ):
+            return True
+    return False
+
+
+def identificar(leitor: LeitorPDF) -> Identificacao:
+    """Identifica o relatório pela 1ª página (títulos da tabela + linha da sessão)."""
+    linhas = agrupar_linhas(leitor.palavras(0))
+    achado = localizar_cabecalho(linhas)
+    if achado is None:
+        meta = extrair_metadados(linhas[:6])
+        return Identificacao(TipoRelatorio.DESCONHECIDO, meta)
+
+    indice, colunas = achado
+    meta = extrair_metadados(linhas[:indice])
+    titulos = {c.titulo for c in colunas}
+
+    if "Lap Tm" in titulos and any(c.numero_setor for c in colunas):
+        return Identificacao(TipoRelatorio.LAPTIMES, meta)
+    if "Total points" in titulos:
+        return Identificacao(TipoRelatorio.NAO_SUPORTADO, meta, detalhe="pontuação do pódio")
+    if "In Session" in titulos or "Overall BestTm" in titulos:
+        return Identificacao(TipoRelatorio.NAO_SUPORTADO, meta, detalhe="consolidado de sessões")
+    if "Last Tm" in titulos:
+        return Identificacao(TipoRelatorio.NAO_SUPORTADO, meta, detalhe="parcial da corrida")
+    if "Best Tm" in titulos:
+        por_classe = _tem_secoes_de_classe(linhas[indice + 1 :], colunas)
+        tipo = (
+            TipoRelatorio.RESULTADO_CORRIDA
+            if meta.tipo_sessao is TipoSessao.CORRIDA
+            else TipoRelatorio.RESUMO
+        )
+        return Identificacao(tipo, meta, agrupado_por_classe=por_classe)
+    return Identificacao(TipoRelatorio.DESCONHECIDO, meta)
