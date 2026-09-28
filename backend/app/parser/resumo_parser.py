@@ -19,10 +19,17 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.parser.cabecalho import Coluna, distribuir_linha
+from app.parser.cabecalho import distribuir_linha
 from app.parser.conversao import inteiro, tempo_em_segundos, voltas_atras
-from app.parser.pdf_texto import LeitorPDF, Palavra, agrupar_linhas
-from app.parser.tipo_pdf import Identificacao, TipoRelatorio, localizar_cabecalho
+from app.parser.pdf_texto import LeitorPDF, agrupar_linhas
+from app.parser.tipo_pdf import (
+    SECOES_FIM_DA_TABELA,
+    SECOES_NAO_CLASSE,
+    Identificacao,
+    TipoRelatorio,
+    localizar_cabecalho,
+    titulo_de_secao,
+)
 
 _TITULOS_CARRO = ("No.", "No", "Nº")
 _TITULOS_VOLTA_DA_MELHOR = ("NA", "In Lap")
@@ -56,17 +63,6 @@ class ResumoOficial(BaseModel):
     metadados: Optional[dict] = None
     pilotos: list[PilotoResumo] = Field(default_factory=list)
     avisos: list[str] = Field(default_factory=list)
-
-
-def _secao_de_classe(linha: list[Palavra], colunas: list[Coluna]) -> str | None:
-    """Linha só com o nome de uma classe (variante BY CLASS), à esquerda de 'No.'."""
-    col_no = next((c for c in colunas if c.titulo in _TITULOS_CARRO), None)
-    limite = col_no.x0 if col_no else 60.0
-    if 1 <= len(linha) <= 3 and linha[0].x0 < limite and not any(
-        ch.isdigit() for p in linha for ch in p.texto
-    ):
-        return " ".join(p.texto for p in linha)
-    return None
 
 
 def _converter(valores: dict[str, str], titulo: str, conversor, ref: str, avisos: list[str]):
@@ -106,9 +102,13 @@ def parse_resumo(leitor: LeitorPDF, ident: Identificacao, nome_arquivo: str | No
             continue
         indice, colunas = achado
         for linha in linhas[indice + 1 :]:
-            secao = _secao_de_classe(linha, colunas)
+            secao = titulo_de_secao(linha, colunas)
             if secao is not None:
-                classe_secao = secao
+                if secao.lower() in SECOES_FIM_DA_TABELA:
+                    break  # comunicados: nenhuma linha dali é piloto
+                # "Not classified" e afins não são classe: a partir dali a
+                # classe fica desconhecida (a coluna Class, se houver, vale).
+                classe_secao = None if secao.lower() in SECOES_NAO_CLASSE else secao
                 continue
 
             d = distribuir_linha(linha, colunas)

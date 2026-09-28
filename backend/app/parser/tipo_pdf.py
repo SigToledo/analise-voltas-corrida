@@ -144,17 +144,47 @@ def localizar_cabecalho(linhas: list[list[Palavra]]) -> tuple[int, list[Coluna]]
     return None
 
 
+# Títulos de seção que o Orbits imprime no meio da tabela e que NÃO são
+# classes. Sem esta lista, "Announcements" (comunicados, no fim da página)
+# fazia todo resumo de Cascavel parecer BY CLASS — e a posição oficial era
+# descartada —, e os carros depois de "Not classified" herdavam isso como
+# classe.
+SECOES_NAO_CLASSE = {
+    "not classified", "non classified", "announcements", "did not start",
+    "did not finish", "disqualified", "excluded",
+}
+# Depois deste título só vem texto livre (comunicados da direção de prova):
+# nenhuma linha dali é piloto.
+SECOES_FIM_DA_TABELA = {"announcements"}
+
+
+def titulo_de_secao(linha: list[Palavra], colunas: list[Coluna]) -> str | None:
+    """
+    Linha curta, só com texto, começando à esquerda da coluna "No.": um
+    título de seção ("ELITE", "Not classified", "Announcements"). None se a
+    linha é de dados.
+    """
+    col_no = next((c for c in colunas if c.titulo in ("No.", "No", "Nº")), None)
+    limite = col_no.x0 if col_no else 60.0
+    if 1 <= len(linha) <= 3 and linha[0].x0 < limite and not any(
+        ch.isdigit() for p in linha for ch in p.texto
+    ):
+        return " ".join(p.texto for p in linha)
+    return None
+
+
 def _tem_secoes_de_classe(linhas_dados: list[list[Palavra]], colunas: list[Coluna]) -> bool:
     """
     BY CLASS: entre as linhas de pilotos aparecem linhas com SÓ o nome da
     classe ("ELITE", "MASTER"), começando à esquerda da coluna "No.".
     """
-    col_no = next((c for c in colunas if c.titulo in ("No.", "No")), None)
-    limite = col_no.x0 if col_no else 60.0
     for linha in linhas_dados:
-        if 1 <= len(linha) <= 3 and linha[0].x0 < limite and not any(
-            ch.isdigit() for p in linha for ch in p.texto
-        ):
+        titulo = titulo_de_secao(linha, colunas)
+        if titulo is None:
+            continue
+        if titulo.lower() in SECOES_FIM_DA_TABELA:
+            return False
+        if titulo.lower() not in SECOES_NAO_CLASSE:
             return True
     return False
 

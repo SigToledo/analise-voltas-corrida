@@ -21,7 +21,7 @@ from app.metrics.calculations import montar_analise_sessao
 from app.parser.laptimes_parser import parse_laptimes
 from app.parser.pdf_texto import LeitorPDF
 from app.parser.resumo_parser import parse_resumo_pdf
-from app.parser.tipo_pdf import TipoRelatorio, identificar
+from app.parser.tipo_pdf import SECOES_NAO_CLASSE, TipoRelatorio, identificar
 
 SAMPLES = Path(__file__).resolve().parents[2] / "samples"
 
@@ -90,3 +90,12 @@ def test_resumos_oficiais_sao_lidos(relatorio: Path):
     carros = [p.numero_carro for p in r.pilotos]
     assert carros and len(carros) == len(set(carros))
     assert all(p.nome for p in r.pilotos)
+    # BY CLASS só quando o relatório é mesmo por classe: "Announcements" e
+    # "Not classified" são títulos de seção, não classes (antes, isso fazia
+    # todo resumo de Cascavel perder a posição oficial).
+    assert r.agrupado_por_classe == ("BY CLASS" in relatorio.name.upper())
+    assert not any(p.classe and p.classe.lower() in SECOES_NAO_CLASSE for p in r.pilotos)
+    if not r.agrupado_por_classe:
+        # Classificação geral: posições 1, 2, 3… sem buraco (não classificados sem posição).
+        posicoes = [p.posicao for p in r.pilotos if p.posicao is not None]
+        assert posicoes == list(range(1, len(posicoes) + 1))
