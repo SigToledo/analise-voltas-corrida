@@ -20,10 +20,17 @@ motor de análise para TypeScript**, rodando dentro do próprio app:
 
 - Leitura do PDF com **pdf.js** (`pdfjs-dist`), que dá acesso ao texto com
   coordenadas — o mesmo insumo que o pdfplumber dá hoje.
-- Parser e métricas reescritos em TS, reproduzindo as regras já validadas:
-  falso negrito, colunas por posição X, leitura em serpentina, voltas de
-  continuação, voltas-fantasma, voltas de pit ("p", inclusive o "p" separado
-  do número), voltas de saída de box, corte do rodapé.
+- Parser e métricas reescritos em TS, reproduzindo as regras já validadas
+  (setembro/2026, PR #1):
+  - leitura: falso negrito (Cuiabá) e fonte bold (Cascavel), colunas pelo
+    TÍTULO (numéricas alinham pela borda direita, texto pela esquerda),
+    leitura em serpentina, voltas de continuação, voltas-fantasma, voltas de
+    pit ("p", inclusive o "p" separado do número), saída de box, rodapé;
+  - melhor volta oficial = a volta em NEGRITO; voltas mais rápidas que ela
+    são "desconsideradas";
+  - tipo de cada volta e Safety Car detectado pelo grid
+    (`backend/app/metrics/tipos_volta.py`), com o modo treino/qualy/corrida;
+  - ritmo pela mediana, consistência pelo MAD × 1,4826, ritmo por trecho.
 - Shell mobile com **Tauri 2** (mesmo framework do desktop, que já suporta
   Android/iOS), reaproveitando as telas React — já pensadas responsivas.
 
@@ -39,14 +46,17 @@ reproduzir EXATAMENTE o resultado do Python:
    samples/ e congelar as saídas completas em JSON (parsing + métricas).
 2. O motor TS é testado contra esses JSONs — qualquer diferença de um
    milésimo é reprovação.
-3. A validação externa continua valendo: melhor volta 26/26 com o Best Tm
-   oficial do cronômetro.
+3. A validação externa continua valendo: melhor volta e número de voltas
+   batendo com o resumo oficial em 866/866 carros (36 relatórios), e os
+   Safety Cars conferidos das 7 corridas de Cascavel.
 
 ## Fases
 
 - **M0 — Gabarito**: gerar os golden files a partir do backend Python atual
-  (script em backend/scripts/gerar_gabarito.py; os JSONs ficam em
-  samples/gabarito/, fora do Git por conterem dados reais de treino).
+  (script em backend/scripts/gerar_gabarito.py, que percorre todas as
+  subpastas de samples/ e analisa cada sessão no modo lido do PDF; os JSONs
+  ficam em samples/gabarito/, fora do Git por conterem dados reais de treino).
+  **Regerar depois do PR #1**: os gabaritos antigos são do parser por posição.
 - **M1 — Motor TS**: portar parser (Laptimes, detecção de tipo, resumo
   Qualify) e métricas; suíte de testes (vitest) contra o gabarito. Sem tela
   nova. É a fase mais longa.
