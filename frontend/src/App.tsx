@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import './App.css'
-import { analisarPdf } from './api'
+import { analisarPdfs } from './api'
 import { compararPilotos } from './ordem'
 import { ComparacaoScreen } from './screens/ComparacaoScreen'
 import { GanharTempoScreen } from './screens/GanharTempoScreen'
@@ -26,7 +26,7 @@ export default function App() {
   const [mostrarAvisos, setMostrarAvisos] = useState(false)
   // Os PDFs da sessão ficam guardados: trocar o modo reenvia os mesmos
   // arquivos com outras regras, sem pedir o upload de novo.
-  const [arquivos, setArquivos] = useState<{ arquivo: File; resumo: File | null } | null>(null)
+  const [arquivos, setArquivos] = useState<File[] | null>(null)
   const [recalculando, setRecalculando] = useState(false)
   const [erroModo, setErroModo] = useState<string | null>(null)
 
@@ -35,7 +35,7 @@ export default function App() {
     setRecalculando(true)
     setErroModo(null)
     try {
-      setAnalise(await analisarPdf(arquivos.arquivo, arquivos.resumo, modo))
+      setAnalise(await analisarPdfs(arquivos, modo))
     } catch (e) {
       setErroModo(e instanceof Error ? e.message : 'Erro ao recalcular a análise.')
     } finally {
@@ -43,8 +43,8 @@ export default function App() {
     }
   }
 
-  function aoConcluirUpload(a: AnaliseSessao, arquivo: File, resumo: File | null) {
-    setArquivos({ arquivo, resumo })
+  function aoConcluirUpload(a: AnaliseSessao, enviados: File[]) {
+    setArquivos(enviados)
     setErroModo(null)
     setAnalise(a)
     // Pré-seleciona os 2 primeiros (melhor volta; na corrida, o resultado).
@@ -123,7 +123,12 @@ export default function App() {
           {recalculando && <span className="recalculando">recalculando…</span>}
         </div>
         <div className="arquivo num">
-          {analise.arquivo_origem} · {analise.num_pilotos} pilotos
+          {analise.grupos.length > 1
+            ? `${analise.grupos.length} grupos juntados (${analise.grupos
+                .map((g) => `${g.sigla}: ${g.num_pilotos}`)
+                .join(' · ')})`
+            : analise.arquivo_origem}{' '}
+          · {analise.num_pilotos} pilotos
         </div>
         <div className="nav">
           <div className="nav-tabs">

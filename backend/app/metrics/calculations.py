@@ -229,6 +229,7 @@ def calcular_metricas_piloto(
         numero_carro=piloto.numero_carro,
         nome=piloto.nome,
         classe=piloto.classe,
+        grupo=piloto.grupo,
         melhor_volta_s=melhor_volta,
         origem_melhor_volta=origem,
         numero_volta_melhor=numero_volta_melhor,
@@ -271,6 +272,7 @@ def calcular_volta_ideal_equipe(
                 DonoDoSetor(
                     setor=i + 1, tempo_s=melhor_tempo,
                     numero_carro_dono=dono.numero_carro, nome_dono=dono.nome,
+                    grupo_dono=dono.grupo,
                 )
             )
 

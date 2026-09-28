@@ -72,7 +72,10 @@ export interface MetricasPiloto {
   numero_carro: string
   nome: string
   classe: string | null
+  /** Posição no resumo oficial; com grupos juntados, DENTRO do grupo. */
   posicao_oficial: number | null
+  /** Grupo da sessão ('G1', 'G2', 'SUPER'…) quando vários grupos foram juntados. */
+  grupo: string | null
   melhor_volta_s: number | null
   /** 'oficial' = destacada no PDF; 'calculada' = relatório sem destaque. */
   origem_melhor_volta: 'oficial' | 'calculada' | null
@@ -101,6 +104,17 @@ export interface DonoDoSetor {
   tempo_s: number | null
   numero_carro_dono: string | null
   nome_dono: string | null
+  grupo_dono: string | null
+}
+
+/** Um dos grupos juntados na análise (ex.: MBR treina em Grupo 1 e Grupo 2). */
+export interface GrupoSessao {
+  sigla: string
+  rotulo: string
+  sessao: string | null
+  data_hora: string | null
+  arquivo: string
+  num_pilotos: number
 }
 
 export interface VoltaIdealEquipe {
@@ -139,5 +153,7 @@ export interface AnaliseSessao {
   volta_ideal_equipe: VoltaIdealEquipe
   comparacao_setores: ComparacaoSetor[]
   voltas_por_carro: Record<string, VoltaLeitura[]>
+  /** Grupos juntados, na ordem do horário. Vazio numa sessão única. */
+  grupos: GrupoSessao[]
   avisos_parsing: string[]
 }

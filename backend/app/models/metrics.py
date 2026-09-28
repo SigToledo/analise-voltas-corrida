@@ -44,7 +44,14 @@ class MetricasPiloto(BaseModel):
         ),
     )
     posicao_oficial: Optional[int] = Field(
-        None, description="Posição no ranking geral do resumo oficial, quando enviado."
+        None,
+        description=(
+            "Posição no resumo oficial, quando enviado. Com grupos juntados, é a "
+            "posição DENTRO do grupo (cada grupo tem o seu resumo)."
+        ),
+    )
+    grupo: Optional[str] = Field(
+        None, description="Grupo da sessão (ex.: 'G1'), quando vários grupos foram juntados."
     )
 
     melhor_volta_s: Optional[float] = Field(
@@ -163,6 +170,21 @@ class DonoDoSetor(BaseModel):
     tempo_s: Optional[float] = None
     numero_carro_dono: Optional[str] = None
     nome_dono: Optional[str] = None
+    grupo_dono: Optional[str] = Field(None, description="Grupo do dono, com grupos juntados.")
+
+
+class GrupoSessao(BaseModel):
+    """
+    Um dos grupos juntados na análise (ex.: MBR treina em Grupo 1 e Grupo 2).
+    Os grupos andam em horários diferentes: a pista pode mudar entre eles.
+    """
+
+    sigla: str = Field(..., description="Etiqueta curta: 'G1', 'G2' ou o nome do grupo ('SUPER').")
+    rotulo: str = Field(..., description="Nome do grupo como está no PDF: 'GRUPO 1', 'ELITE/MASTER'.")
+    sessao: Optional[str] = Field(None, description="Nome completo da sessão desse grupo.")
+    data_hora: Optional[str] = Field(None, description="Início da sessão desse grupo.")
+    arquivo: str = Field(..., description="Laptimes de onde vieram os pilotos do grupo.")
+    num_pilotos: int = 0
 
 
 class VoltaIdealEquipe(BaseModel):
@@ -243,6 +265,12 @@ class AnaliseSessao(BaseModel):
             "Voltas (dado bruto extraído) de cada piloto, indexadas pelo número do "
             "carro. O frontend usa isso para o gráfico de tempo por volta. Voltas "
             "sem leitura mantêm os campos em null — nunca interpolar no gráfico."
+        ),
+    )
+    grupos: list[GrupoSessao] = Field(
+        default_factory=list,
+        description=(
+            "Grupos juntados nesta análise, na ordem do horário. Vazio numa sessão única."
         ),
     )
     avisos_parsing: list[str] = Field(

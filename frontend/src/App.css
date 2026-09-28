@@ -172,21 +172,42 @@
   color: var(--giz-fraco);
   margin-bottom: 0.5rem;
 }
-.upload-resumo {
+.upload-dica {
+  margin: 0 0 0.9rem;
+  color: var(--giz-fraco);
+  font-size: 0.88rem;
+}
+/* Lista dos PDFs escolhidos, antes de analisar (dá para tirar um errado). */
+.upload-lista {
   margin-top: 0.9rem;
-  padding: 0.9rem 1.8rem;
+  padding: 0.7rem 1.1rem 1rem;
   border: 1px dashed var(--risco);
   border-radius: 3px;
+}
+.upload-lista ul {
+  list-style: none;
+  margin: 0 0 0.9rem;
+  padding: 0;
+}
+.upload-lista li {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.8rem;
-  flex-wrap: wrap;
-  color: var(--giz-fraco);
-  font-size: 0.9rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--risco);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
 }
-.upload-resumo .ok {
-  color: var(--verde);
-  font-style: normal;
+.upload-lista .remover {
+  background: transparent;
+  color: var(--giz-fraco);
+  padding: 0.1em 0.6em;
+  flex-shrink: 0;
+}
+.upload-lista .remover:hover {
+  color: var(--vermelho);
+  border-color: var(--vermelho);
 }
 .erro-box {
   margin-top: 1.2rem;
@@ -255,6 +276,64 @@
   color: var(--giz-fraco);
   margin-left: 0.5rem;
 }
+/* Grupo da sessão no chip (G1, G2) — contorno, para não competir com a classe. */
+.chip .grupo {
+  font-family: var(--tipo-display);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  color: var(--giz-fraco);
+  border: 1px solid var(--risco);
+  border-radius: 2px;
+  padding: 0 0.3em;
+  margin-left: 0.4rem;
+}
+.grupo-legenda {
+  color: var(--giz-fraco);
+  font-size: 0.8em;
+}
+
+/* Filtro Todos | G1 | G2, no mesmo desenho do seletor de modo. */
+.filtro-grupo {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 0 0.7rem;
+}
+.filtro-grupo button {
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.35em 0.9em;
+}
+.filtro-grupo button + button {
+  border-left: none;
+}
+.filtro-grupo button:first-child {
+  border-radius: 3px 0 0 3px;
+}
+.filtro-grupo button:last-child {
+  border-radius: 0 3px 3px 0;
+}
+.filtro-grupo button.ativo {
+  background: var(--giz);
+  color: var(--pista);
+}
+.filtro-grupo small {
+  margin-left: 0.4em;
+  font-size: 0.7rem;
+  opacity: 0.75;
+  letter-spacing: 0.04em;
+}
+
+/* Comparação entre grupos: horários diferentes, pista pode ter mudado. */
+.aviso-grupos {
+  margin: -0.4rem 0 0.8rem;
+  font-size: 0.82rem;
+  color: var(--ambar);
+}
+
 /* Posição no resultado da corrida (P1, P2…; NC = não classificado). */
 .chip .posicao {
   color: var(--giz-fraco);

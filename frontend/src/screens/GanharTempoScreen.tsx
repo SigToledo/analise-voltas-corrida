@@ -62,7 +62,10 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
     <div>
       {/* Card volta ideal da equipe */}
       <div className="card-ideal">
-        <div className="rotulo">Volta ideal da equipe · melhores setores do grid</div>
+        <div className="rotulo">
+          Volta ideal da equipe · melhores setores do grid
+          {analise.grupos.length > 1 && ` (${analise.grupos.map((g) => g.sigla).join(' + ')})`}
+        </div>
         {ideal.total_s === null ? (
           <div className="sem-leitura" style={{ fontSize: '1.4rem' }}>
             Não foi possível montar a volta ideal (algum setor sem leitura no grid).
@@ -82,6 +85,7 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
                   <>
                     <b className="num">{formatarTempo(dono.tempo_s)}</b> ({dono.numero_carro_dono}){' '}
                     {dono.nome_dono}
+                    {dono.grupo_dono && <span className="grupo-legenda"> · {dono.grupo_dono}</span>}
                   </>
                 )}
               </div>
