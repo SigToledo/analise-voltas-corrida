@@ -3,13 +3,14 @@ import { analisarPdf } from '../api'
 import type { AnaliseSessao } from '../types'
 
 interface Props {
-  aoConcluir: (analise: AnaliseSessao) => void
+  /** Devolve também os arquivos: trocar o modo depois reenvia os mesmos PDFs. */
+  aoConcluir: (analise: AnaliseSessao, arquivo: File, resumo: File | null) => void
 }
 
 /**
  * Tela 1 — Entrada dos relatórios da sessão.
  * O Laptimes é obrigatório (é dele que saem as voltas). O resumo
- * QualifyReduced é opcional e acrescenta as classes (ELITE/MASTER).
+ * (QualifyReduced ou RaceFull) é opcional e acrescenta as classes e a posição.
  */
 export function UploadScreen({ aoConcluir }: Props) {
   const [carregando, setCarregando] = useState(false)
@@ -24,7 +25,7 @@ export function UploadScreen({ aoConcluir }: Props) {
     setCarregando(true)
     try {
       const analise = await analisarPdf(arquivo, resumo)
-      aoConcluir(analise)
+      aoConcluir(analise, arquivo, resumo)
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro desconhecido ao analisar o PDF.')
     } finally {
@@ -64,7 +65,7 @@ export function UploadScreen({ aoConcluir }: Props) {
       >
         <div className="rotulo">Relatório Laptimes — obrigatório</div>
         <p style={{ margin: '0 0 0.9rem' }}>
-          Solte aqui o PDF de voltas do treino (Orbits / MyLaps), ou
+          Solte aqui o PDF de voltas da sessão (Orbits / MyLaps), ou
         </p>
         <button onClick={() => inputPrincipal.current?.click()}>Escolher o PDF de voltas</button>
         <input
@@ -85,7 +86,8 @@ export function UploadScreen({ aoConcluir }: Props) {
 
       <div className="upload-resumo">
         <span>
-          Resumo QualifyReduced — opcional, acrescenta as classes e a posição oficial.
+          Resumo QualifyReduced ou RaceFull — opcional, acrescenta as classes e a posição
+          oficial.
         </span>
         {resumo ? (
           <span className="ok num">{resumo.name}</span>

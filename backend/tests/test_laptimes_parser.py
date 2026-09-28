@@ -69,9 +69,9 @@ def test_valores_de_uma_volta_conhecida(resultado):
     ljose = next(p for p in resultado.pilotos if p.numero_carro == "171")
     v2 = next(v for v in ljose.voltas if v.numero_volta == 2)
     assert v2.tempo_volta_s == pytest.approx(141.904)  # 2*60 + 21.904
-    assert v2.setor1_s == pytest.approx(38.404)
-    assert v2.setor2_s == pytest.approx(50.953)
-    assert v2.setor3_s == pytest.approx(52.547)
+    assert v2.setores_s[0] == pytest.approx(38.404)
+    assert v2.setores_s[1] == pytest.approx(50.953)
+    assert v2.setores_s[2] == pytest.approx(52.547)
     assert v2.velocidade_radar_kmh == pytest.approx(178.2)
     assert v2.campos_ausentes == []
 
@@ -81,11 +81,11 @@ def test_campo_ausente_nao_e_inventado(resultado):
     sinalizar em campos_ausentes — NUNCA preencher com 0 ou estimativa."""
     ljose = next(p for p in resultado.pilotos if p.numero_carro == "171")
     v1 = next(v for v in ljose.voltas if v.numero_volta == 1)
-    assert v1.setor1_s is None
+    assert v1.setores_s[0] is None
     assert "setor1_s" in v1.campos_ausentes
     # Os demais campos da volta 1 existem e não devem estar na lista de ausentes.
     assert v1.tempo_volta_s == pytest.approx(143.983)  # 2:23.983
-    assert v1.setor2_s == pytest.approx(55.834)
+    assert v1.setores_s[1] == pytest.approx(55.834)
 
 
 def test_volta_de_pit_e_marcada(resultado):

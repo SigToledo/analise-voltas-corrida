@@ -76,6 +76,58 @@
   background: var(--giz);
   color: var(--pista);
 }
+/* Seletor de modo (treino/qualy/corrida): mesmo desenho das abas, mas com
+   rótulo à esquerda e a marca "PDF" no modo que o próprio relatório indica. */
+.seletor-modo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+}
+.seletor-modo .rotulo {
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  color: var(--giz-fraco);
+  margin-right: 0.6rem;
+}
+.seletor-modo button {
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.4em 0.9em;
+}
+.seletor-modo button + button {
+  border-left: none;
+}
+.seletor-modo button:first-of-type {
+  border-radius: 3px 0 0 3px;
+}
+.seletor-modo button:last-of-type {
+  border-radius: 0 3px 3px 0;
+}
+.seletor-modo button.ativo {
+  background: var(--ambar);
+  border-color: var(--ambar);
+  color: var(--pista);
+}
+.seletor-modo button small {
+  font-size: 0.62rem;
+  margin-left: 0.35em;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+  vertical-align: 0.15em;
+}
+.seletor-modo .recalculando {
+  margin-left: 0.7rem;
+  color: var(--giz-fraco);
+  font-size: 0.85rem;
+}
 .btn-perigo {
   color: var(--giz-fraco);
   background: transparent;
@@ -203,6 +255,12 @@
   color: var(--giz-fraco);
   margin-left: 0.5rem;
 }
+/* Posição no resultado da corrida (P1, P2…; NC = não classificado). */
+.chip .posicao {
+  color: var(--giz-fraco);
+  font-size: 0.78rem;
+  margin-right: 0.4rem;
+}
 .chip.selecionado {
   border-width: 2px;
   background: var(--painel-2);
@@ -325,6 +383,83 @@ table.dados th {
   color: var(--pista);
   font-size: 1rem;
   padding: 0.65em 1.4em;
+}
+
+/* ---------- Safety Car (modo corrida) ----------
+   Amarelo da bandeira; borda tracejada = inferência, não dado do PDF. */
+.faixa-sc {
+  margin: 0 0 1rem;
+  border: 1px dashed var(--ambar);
+  border-left: 4px solid var(--ambar);
+  border-radius: 3px;
+  background: var(--ambar-fundo);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.9rem;
+}
+.faixa-sc b {
+  color: var(--ambar);
+  font-family: var(--tipo-display);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.faixa-sc ul {
+  margin: 0.35rem 0 0.2rem;
+  padding-left: 1.1rem;
+}
+.faixa-sc .nota {
+  color: var(--giz-fraco);
+  font-size: 0.8rem;
+}
+
+/* Legenda embaixo do gráfico: um item por símbolo que aparece nele. */
+.legenda-grafico {
+  text-align: left;
+  font-size: 0.82rem;
+  margin-top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+}
+.legenda-grafico b {
+  font-family: var(--tipo-tempo);
+  color: var(--giz);
+}
+.legenda-grafico b.sc {
+  color: var(--ambar);
+}
+
+/* Observações por piloto (avisos do cálculo), logo abaixo do resumo. */
+.observacoes {
+  margin: -0.4rem 0 1.2rem;
+  padding: 0.6rem 0.9rem;
+  border-left: 3px solid var(--risco);
+  background: var(--painel);
+  border-radius: 3px;
+  font-size: 0.85rem;
+}
+.observacoes h3 {
+  font-size: 0.8rem;
+  color: var(--giz-fraco);
+  letter-spacing: 0.08em;
+  margin: 0 0 0.3rem;
+}
+.observacoes ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+.observacoes li + li {
+  margin-top: 0.2rem;
+}
+
+/* Linha secundária dentro de uma célula (nº de voltas, delta). */
+table.dados .sub {
+  font-size: 0.74rem;
+  color: var(--giz-fraco);
+  margin-top: 0.1rem;
+}
+/* Poucas voltas: o número aparece, mas apagado — é indício, não ritmo firme. */
+table.dados .indicio {
+  opacity: 0.6;
 }
 
 /* Célula de gap: a intensidade fica no FUNDO (mapa de calor); o texto é

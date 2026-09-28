@@ -28,7 +28,8 @@
   --roxo-fundo: rgba(148, 104, 255, 0.16);
   --verde: #46d381;        /* melhor pessoal / referência */
   --verde-fundo: rgba(70, 211, 129, 0.13);
-  --ambar: #f2b23e;        /* box / atenção */
+  --ambar: #f2b23e;        /* box / atenção / Safety Car (bandeira amarela) */
+  --ambar-fundo: rgba(242, 178, 62, 0.13);
   --vermelho: #ef5350;     /* gap alto */
 
   /* Cores das linhas de piloto no gráfico */
