@@ -13,6 +13,7 @@ import {
 import { RitmoPorTrecho } from '../components/RitmoPorTrecho'
 import { corDoPiloto } from '../cores'
 import { LIMITE_JANELA, marcasEixo, passoMarcadores } from '../escala'
+import { avisoGruposMisturados, filtrarPorGrupo, horaDoGrupo } from '../grupos'
 import { compararPilotos } from '../ordem'
 import { formatarDelta, formatarRelogio, formatarTempo, formatarVelocidade } from '../format'
 import type { AnaliseSessao, MetricasPiloto, TipoVolta } from '../types'
@@ -55,11 +56,17 @@ export function ComparacaoScreen({
 }: Props) {
   const estreito = useLarguraJanela() < 640
   const modo = analise.modo
+  // Filtro dos chips por grupo (só aparece com grupos juntados). Esconder um
+  // grupo não tira da seleção quem já está no gráfico.
+  const [filtroGrupo, setFiltroGrupo] = useState<string | null>(null)
+  const temGrupos = analise.grupos.length > 1
 
   // Pilotos na ordem da sessão: melhor volta (treino/qualy) ou resultado
   // oficial (corrida, quando o RaceFull foi enviado). Sem volta vai para o fim.
   const pilotos = [...analise.pilotos].sort(compararPilotos(modo))
   const mostrarPosicao = modo === 'corrida' && pilotos.some((p) => p.posicao_oficial !== null)
+  const pilotosVisiveis = filtrarPorGrupo(pilotos, temGrupos ? filtroGrupo : null)
+  const avisoGrupos = avisoGruposMisturados(analise.grupos, analise.pilotos, selecionados)
 
   const metricas = new Map(analise.pilotos.map((p) => [p.numero_carro, p]))
   // Voltas que a cronometragem desconsiderou (mais rápidas que a oficial —
@@ -169,9 +176,37 @@ export function ComparacaoScreen({
         Clique nos pilotos para comparar (até {LIMITE_SELECAO}).
       </p>
 
+      {/* Filtro por grupo: Todos | G1 | G2 (sessão com grupos juntados). */}
+      {temGrupos && (
+        <div className="filtro-grupo" role="group" aria-label="Filtrar pilotos por grupo">
+          <button
+            className={filtroGrupo === null ? 'ativo' : ''}
+            aria-pressed={filtroGrupo === null}
+            onClick={() => setFiltroGrupo(null)}
+          >
+            Todos <small>{analise.num_pilotos}</small>
+          </button>
+          {analise.grupos.map((g) => (
+            <button
+              key={g.sigla}
+              className={filtroGrupo === g.sigla ? 'ativo' : ''}
+              aria-pressed={filtroGrupo === g.sigla}
+              title={g.sessao ?? g.rotulo}
+              onClick={() => setFiltroGrupo(g.sigla)}
+            >
+              {g.sigla}
+              <small>
+                {g.num_pilotos}
+                {horaDoGrupo(g.data_hora) && ` · ${horaDoGrupo(g.data_hora)}`}
+              </small>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Chips de seleção */}
       <div className="chips">
-        {pilotos.map((p) => {
+        {pilotosVisiveis.map((p) => {
           const sel = selecionados.includes(p.numero_carro)
           const cor = corDoPiloto(selecionados, p.numero_carro)
           return (
@@ -191,6 +226,7 @@ export function ComparacaoScreen({
                 )}
                 ({p.numero_carro}) {p.nome}
                 {p.classe && <span className="classe">{p.classe}</span>}
+                {temGrupos && p.grupo && <span className="grupo">{p.grupo}</span>}
               </span>
               <span className="tempo num">{formatarTempo(p.melhor_volta_s)}</span>
             </button>
@@ -207,11 +243,13 @@ export function ComparacaoScreen({
               <span key={carro}>
                 <i style={{ background: corDoPiloto(selecionados, carro) }} />(
                 {carro}) {p?.nome}
+                {temGrupos && p?.grupo && <small className="grupo-legenda"> {p.grupo}</small>}
               </span>
             )
           })}
         </div>
       )}
+      {avisoGrupos && <p className="aviso-grupos">{avisoGrupos}</p>}
 
       {/* Gráfico de tempo por volta */}
       {selecionados.length === 0 ? (

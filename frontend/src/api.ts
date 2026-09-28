@@ -7,8 +7,10 @@ import type { AnaliseSessao, Modo } from './types'
 const API_BASE = import.meta.env.PROD ? 'http://localhost:8000' : ''
 
 /**
- * Envia o PDF Laptimes (e, se houver, o resumo QualifyReduced/RaceFull) para
- * o backend e devolve a análise.
+ * Envia os PDFs da sessão para o backend e devolve a análise. Pode ir tudo
+ * junto, em qualquer ordem: o(s) Laptimes (um por grupo, quando a sessão
+ * roda em grupos) e os resumos QualifyReduced/RaceFull — o backend
+ * identifica cada arquivo pelo conteúdo.
  *
  * `modo`: 'auto' deixa o backend ler do PDF se foi treino, qualy ou corrida;
  * os demais forçam as regras daquele tipo (o usuário escolhe na tela).
@@ -17,14 +19,12 @@ const API_BASE = import.meta.env.PROD ? 'http://localhost:8000' : ''
  * tipo errado de relatório), para a tela de upload mostrar o erro sem
  * inventar nenhum dado.
  */
-export async function analisarPdf(
-  arquivo: File,
-  resumo?: File | null,
+export async function analisarPdfs(
+  arquivos: File[],
   modo: Modo | 'auto' = 'auto',
 ): Promise<AnaliseSessao> {
   const form = new FormData()
-  form.append('arquivo', arquivo)
-  if (resumo) form.append('resumo', resumo)
+  for (const arquivo of arquivos) form.append('arquivos', arquivo)
   form.append('modo', modo)
 
   let resposta: Response

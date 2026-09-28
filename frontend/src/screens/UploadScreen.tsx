@@ -1,33 +1,47 @@
 import { useRef, useState } from 'react'
-import { analisarPdf } from '../api'
+import { analisarPdfs } from '../api'
 import type { AnaliseSessao } from '../types'
 
 interface Props {
   /** Devolve também os arquivos: trocar o modo depois reenvia os mesmos PDFs. */
-  aoConcluir: (analise: AnaliseSessao, arquivo: File, resumo: File | null) => void
+  aoConcluir: (analise: AnaliseSessao, arquivos: File[]) => void
+}
+
+/** Mesmo arquivo escolhido duas vezes (nome + tamanho): entra uma vez só. */
+function chave(f: File): string {
+  return `${f.name}|${f.size}`
 }
 
 /**
  * Tela 1 — Entrada dos relatórios da sessão.
- * O Laptimes é obrigatório (é dele que saem as voltas). O resumo
- * (QualifyReduced ou RaceFull) é opcional e acrescenta as classes e a posição.
+ * Tudo numa área só, em qualquer ordem: o Laptimes (obrigatório — é dele que
+ * saem as voltas; um por grupo quando a sessão roda em grupos, como os
+ * treinos da MBR) e os resumos QualifyReduced/RaceFull (opcionais: classe e
+ * posição). O backend identifica cada PDF pelo conteúdo.
  */
 export function UploadScreen({ aoConcluir }: Props) {
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [arrastando, setArrastando] = useState(false)
-  const [resumo, setResumo] = useState<File | null>(null)
-  const inputPrincipal = useRef<HTMLInputElement>(null)
-  const inputResumo = useRef<HTMLInputElement>(null)
+  const [arquivos, setArquivos] = useState<File[]>([])
+  const input = useRef<HTMLInputElement>(null)
 
-  async function processar(arquivo: File) {
+  function adicionar(novos: FileList | null) {
+    if (!novos) return
+    setErro(null)
+    setArquivos((atuais) => {
+      const vistos = new Set(atuais.map(chave))
+      return [...atuais, ...[...novos].filter((f) => !vistos.has(chave(f)))]
+    })
+  }
+
+  async function analisar() {
     setErro(null)
     setCarregando(true)
     try {
-      const analise = await analisarPdf(arquivo, resumo)
-      aoConcluir(analise, arquivo, resumo)
+      aoConcluir(await analisarPdfs(arquivos), arquivos)
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Erro desconhecido ao analisar o PDF.')
+      setErro(e instanceof Error ? e.message : 'Erro desconhecido ao analisar os PDFs.')
     } finally {
       setCarregando(false)
     }
@@ -59,60 +73,60 @@ export function UploadScreen({ aoConcluir }: Props) {
         onDrop={(e) => {
           e.preventDefault()
           setArrastando(false)
-          const arquivo = e.dataTransfer.files?.[0]
-          if (arquivo) processar(arquivo)
+          adicionar(e.dataTransfer.files)
         }}
       >
-        <div className="rotulo">Relatório Laptimes — obrigatório</div>
-        <p style={{ margin: '0 0 0.9rem' }}>
-          Solte aqui o PDF de voltas da sessão (Orbits / MyLaps), ou
+        <div className="rotulo">PDFs da sessão</div>
+        <p style={{ margin: '0 0 0.4rem' }}>
+          Solte aqui o <b>Laptimes</b> (Orbits / MyLaps) e, se tiver, o resumo{' '}
+          <b>QualifyReduced</b> ou <b>RaceFull</b>, que traz classe e posição.
         </p>
-        <button onClick={() => inputPrincipal.current?.click()}>Escolher o PDF de voltas</button>
+        <p className="upload-dica">
+          Sessão em grupos (ex.: treino da MBR em Grupo 1 e Grupo 2)? Mande os PDFs de todos os
+          grupos juntos: a análise fica numa tela só.
+        </p>
+        <button onClick={() => input.current?.click()}>Escolher PDFs</button>
         <input
-          ref={inputPrincipal}
+          ref={input}
           type="file"
           accept="application/pdf"
+          multiple
           style={{ display: 'none' }}
           onChange={(e) => {
-            const arquivo = e.target.files?.[0]
-            // Limpa o valor do input: o navegador só dispara onChange quando o
-            // valor MUDA, então sem isso escolher o MESMO arquivo de novo (ex.
-            // depois de um erro) não faria nada.
+            adicionar(e.target.files)
+            // Limpa o valor: o navegador só dispara onChange quando o valor
+            // MUDA, então sem isso escolher o MESMO arquivo de novo (ex.
+            // depois de removê-lo) não faria nada.
             e.target.value = ''
-            if (arquivo) processar(arquivo)
           }}
         />
       </div>
 
-      <div className="upload-resumo">
-        <span>
-          Resumo QualifyReduced ou RaceFull — opcional, acrescenta as classes e a posição
-          oficial.
-        </span>
-        {resumo ? (
-          <span className="ok num">{resumo.name}</span>
-        ) : (
-          <button onClick={() => inputResumo.current?.click()}>Adicionar resumo</button>
-        )}
-        {resumo && <button onClick={() => setResumo(null)}>Remover</button>}
-        <input
-          ref={inputResumo}
-          type="file"
-          accept="application/pdf"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const arquivo = e.target.files?.[0] ?? null
-            // Mesmo motivo do input principal: sem limpar o valor, remover o
-            // resumo e escolher o MESMO arquivo de novo não dispara onChange.
-            e.target.value = ''
-            setResumo(arquivo)
-          }}
-        />
-      </div>
+      {arquivos.length > 0 && (
+        <div className="upload-lista">
+          <ul>
+            {arquivos.map((f) => (
+              <li key={chave(f)}>
+                <span className="num">{f.name}</span>
+                <button
+                  className="remover"
+                  aria-label={`Remover ${f.name}`}
+                  onClick={() => setArquivos((atuais) => atuais.filter((x) => x !== f))}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button className="cta-ganhar" onClick={analisar}>
+            Analisar {arquivos.length === 1 ? '1 arquivo' : `${arquivos.length} arquivos`} →
+          </button>
+        </div>
+      )}
 
       {erro && (
         <div className="erro-box">
-          <b>O arquivo não pôde ser usado.</b>
+          <b>Os arquivos não puderam ser usados.</b>
           <div style={{ marginTop: '0.35rem' }}>{erro}</div>
         </div>
       )}

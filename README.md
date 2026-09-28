@@ -33,6 +33,11 @@ garagem: do PDF da sessão ao "onde ganhar tempo" em poucos cliques.
   gaps por setor (em segundos e %), destacando onde está a maior oportunidade.
 - **Usa o resumo oficial** (QualifyReduced ou RaceFull), quando enviado, para
   trazer a classe e a posição de cada carro e conferir a melhor volta.
+- **Junta os grupos da mesma sessão** (ex.: treinos da MBR em Grupo 1 e Grupo
+  2; classificatório dividido por classe): basta mandar todos os PDFs juntos,
+  em qualquer ordem. Cada piloto ganha a etiqueta do grupo, há um filtro por
+  grupo e a volta ideal é do grid inteiro. O app recusa juntar sessões,
+  dias ou pistas diferentes, e carros repetidos.
 
 ### Princípio de integridade dos dados
 
@@ -85,9 +90,14 @@ npm install
 npm run dev                    # http://localhost:5173 (faz proxy de /analise para o backend)
 ```
 
-Abra `http://localhost:5173`, envie um PDF de Laptimes (e, se quiser, o resumo
-QualifyReduced/RaceFull da mesma sessão) e navegue entre as telas de comparação
-e "onde ganhar tempo".
+Abra `http://localhost:5173`, envie os PDFs da sessão (o Laptimes e, se quiser,
+o resumo QualifyReduced/RaceFull; os de todos os grupos, se a sessão roda em
+grupos) e navegue entre as telas de comparação e "onde ganhar tempo".
+
+Com o app instalado aberto, o backend dele já ocupa a porta 8000. Para
+desenvolver ao mesmo tempo, suba o backend em outra porta
+(`uvicorn app.main:app --reload --port 8001`) e rode o frontend com
+`BACKEND_PORT=8001`.
 
 Testes do frontend: `npx vitest run`.
 
