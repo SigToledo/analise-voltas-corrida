@@ -51,7 +51,7 @@ def test_saida_de_box_nao_vira_melhor_volta(pilotos):
     """O caso real: a 'volta' de 2:08.347 do 411 (saída de box) não pode ser a
     melhor volta — a melhor continua sendo a oficial, 2:15.232."""
     machiavelli = next(p for p in pilotos if p.numero_carro == "411")
-    m = calcular_metricas_piloto(machiavelli)
+    m = calcular_metricas_piloto(machiavelli, 3, True)
     assert m.melhor_volta_s == pytest.approx(135.232)
 
 
@@ -59,7 +59,7 @@ def test_nenhuma_saida_de_box_nas_estatisticas(pilotos):
     """Invariante global: nenhum piloto tem melhor volta mais rápida que
     qualquer uma de suas voltas de saída de box indicaria por engano."""
     for p in pilotos:
-        m = calcular_metricas_piloto(p)
+        m = calcular_metricas_piloto(p, 3, True)
         if m.melhor_volta_s is None:
             continue
         for v in p.voltas:
@@ -75,5 +75,5 @@ def test_melhores_setores_ignoram_saida_de_box(pilotos):
     esperados = {"113": 49.379, "25": 49.261, "122": 49.477}
     for carro, s3 in esperados.items():
         p = next(x for x in pilotos if x.numero_carro == carro)
-        m = calcular_metricas_piloto(p)
-        assert m.melhor_setor3_s == pytest.approx(s3), carro
+        m = calcular_metricas_piloto(p, 3, True)
+        assert m.melhores_setores_s[2] == pytest.approx(s3), carro

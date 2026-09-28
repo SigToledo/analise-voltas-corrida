@@ -83,13 +83,14 @@ export function ComparacaoScreen({
   const temposLimpos: number[] = []
   for (const carro of selecionados) {
     const metr = analise.pilotos.find((p) => p.numero_carro === carro)
-    const outliers = new Set(metr?.voltas_outlier ?? [])
+    // Fora da escala: tráfego (outliers) e voltas desconsideradas pela
+    // cronometragem (mais rápidas que a oficial — canceladas).
+    const outliers = new Set([
+      ...(metr?.voltas_outlier ?? []),
+      ...(metr?.voltas_desconsideradas ?? []),
+    ])
     for (const v of analise.voltas_por_carro[carro] ?? []) {
-      const completa =
-        v.tempo_volta_s !== null &&
-        v.setor1_s !== null &&
-        v.setor2_s !== null &&
-        v.setor3_s !== null
+      const completa = v.tempo_volta_s !== null && v.setores_s.every((s) => s !== null)
       if (!v.eh_volta_pit && !v.eh_volta_saida_box && completa && !outliers.has(v.numero_volta)) {
         temposLimpos.push(v.tempo_volta_s as number)
       }

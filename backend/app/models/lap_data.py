@@ -44,21 +44,40 @@ class VoltaLeitura(BaseModel):
     tempo_volta_s: Optional[float] = Field(
         None, description="Tempo total da volta (Lap Tm), em segundos. None se não foi lido."
     )
-    setor1_s: Optional[float] = Field(None, description="Tempo do setor 1 (S1 Tm), em segundos.")
-    setor2_s: Optional[float] = Field(None, description="Tempo do setor 2 (S2 Tm), em segundos.")
-    setor3_s: Optional[float] = Field(None, description="Tempo do setor 3 (S3 Tm), em segundos.")
+    melhor_oficial: bool = Field(
+        False,
+        description=(
+            "True se o PDF imprime o tempo desta volta em NEGRITO: é assim que o "
+            "cronômetro marca a melhor volta OFICIAL do piloto (já descontadas "
+            "voltas canceladas pela direção de prova, que não têm outra marcação)."
+        ),
+    )
+    setores_s: list[Optional[float]] = Field(
+        default_factory=list,
+        description=(
+            "Tempo de cada setor, em segundos, na ordem S1, S2, S3… A quantidade de "
+            "setores vem do cabeçalho do relatório (varia por pista). None = setor "
+            "sem leitura nesta volta."
+        ),
+    )
     velocidade_radar_kmh: Optional[float] = Field(
-        None, description="Velocidade de radar (SSTRAP), em km/h."
+        None,
+        description="Velocidade de radar em km/h (coluna 'SSTRAP' ou 'SPD', conforme o evento).",
     )
 
     campos_ausentes: list[str] = Field(
         default_factory=list,
         description=(
-            "Lista com os nomes dos campos que deveriam existir mas não foram "
-            "encontrados/lidos com confiança nesta volta (ex: ['setor1_s']). "
-            "Vazio significa que todos os campos esperados foram lidos."
+            "Campos que EXISTEM no relatório mas não foram lidos nesta volta "
+            "(ex: ['setor1_s']). Colunas que o relatório nem tem (ex.: pista sem "
+            "radar) não entram aqui."
         ),
     )
+
+    @property
+    def completa(self) -> bool:
+        """Tempo total e TODOS os setores lidos."""
+        return self.tempo_volta_s is not None and all(s is not None for s in self.setores_s)
 
 
 class PilotoLaps(BaseModel):
@@ -66,6 +85,9 @@ class PilotoLaps(BaseModel):
 
     numero_carro: str = Field(..., description="Número do carro, ex: '171'. Mantido como string.")
     nome: str = Field(..., description="Nome (ou nomes, em caso de dupla) do piloto, ex: 'L.JOSE'.")
+    classe: Optional[str] = Field(
+        None, description="Classe, quando o próprio Laptimes vem agrupado por classe."
+    )
     voltas: list[VoltaLeitura] = Field(default_factory=list)
 
     @property
@@ -76,15 +98,15 @@ class PilotoLaps(BaseModel):
 
 class ResultadoParsingPDF(BaseModel):
     """
-    Resultado completo do parsing de um PDF "Laptimes_sec4".
+    Resultado completo do parsing de um PDF "Laptimes".
 
-    avisos: lista de mensagens em texto simples sobre qualquer problema
-    encontrado durante o parsing que não impediu o processo, mas que o
-    usuário deveria saber (ex: "página 2: texto sobreposto não resolvido
-    perto de x=300, top=450"). Isso é o mecanismo de "sinalizar em vez de
-    inventar" em nível de documento inteiro.
+    avisos: mensagens sobre qualquer problema encontrado durante o parsing que
+    não impediu o processo, mas que o usuário deveria saber. É o mecanismo de
+    "sinalizar em vez de inventar" em nível de documento inteiro.
     """
 
     arquivo_origem: str
+    num_setores: int = Field(0, description="Quantos setores o relatório tem (do cabeçalho).")
+    tem_radar: bool = Field(False, description="Se o relatório tem coluna de velocidade de radar.")
     pilotos: list[PilotoLaps] = Field(default_factory=list)
     avisos: list[str] = Field(default_factory=list)

@@ -10,30 +10,31 @@ PRINCÍPIO QUE GUIA TUDO AQUI:
   confiança (ex: um setor sem nenhuma leitura), devolvemos None + um aviso.
   Nunca preenchemos com 0 ou estimativa.
 
-DEFINIÇÕES (para os números terem significado claro):
-- "Volta de saída de box": a volta 1 da sessão ou a volta seguinte a uma
-  volta 'p'. O cronômetro NÃO conta parte do tempo parado no box, então o
-  total dessas voltas sai irrealisticamente baixo — nos dados reais há 27
-  saídas de box "mais rápidas" que a melhor volta válida do próprio piloto.
-  A cronometragem oficial as desconsidera, e nós também: elas ficam fora da
-  melhor volta, da mediana/consistência, dos melhores setores e do SSTRAP.
-- "Volta válida/limpa": volta que NÃO é de pit, NÃO é saída de box e tem os
-  TRÊS setores lidos (S1, S2 e S3). Exigir os três setores descarta as
-  voltas-fantasma (tempo registrado sem um dos setores medido). Validação nos
-  dados reais: a "volta completa mais rápida" bate com o 'Best Tm' oficial
-  para todos os 26 pilotos. É a base da melhor volta, da mediana e da
-  consistência. (Não removemos outliers de tráfego além disso — seria um
-  critério inventado; sinalizamos e mantemos.)
-- "Melhor volta": menor tempo total entre as voltas válidas (acima).
-- "Melhor volta teórica": soma do melhor S1 + melhor S2 + melhor S3 do piloto.
-  Cada setor pode vir de uma volta diferente com aquele split medido — exceto
-  de voltas de saída de box, cujos splits não são confiáveis.
+DEFINIÇÕES (validadas contra o cronômetro oficial em 36 relatórios Laptimes
+de 5 categorias, Cuiabá e Cascavel):
+- "Melhor volta OFICIAL": o próprio PDF imprime em NEGRITO a melhor volta de
+  cada piloto. Esse negrito coincide com o 'Best Tm' do resumo oficial em
+  866 de 866 carros — inclusive quando a direção de prova CANCELA voltas
+  (ex.: limite de pista), algo que o Laptimes não mostra de outro jeito.
+  Por isso, quando o relatório tem negrito, a melhor volta é a destacada.
+- "Voltas desconsideradas": voltas completas MAIS RÁPIDAS que a melhor
+  oficial. Se a cronometragem não as considerou, foram canceladas; ficam fora
+  do ritmo e dos melhores setores, e aparecem listadas para o engenheiro.
+- "Volta de saída de box": a volta 1 da sessão ou a seguinte a uma volta 'p'.
+  O cronômetro não conta parte do tempo parado no box, então o total dessas
+  voltas sai irreal. Ficam fora do ritmo, dos melhores setores e do radar.
+- "Volta válida/limpa": não é de box (entrada ou saída), não foi
+  desconsiderada e tem tempo total e TODOS os setores lidos (volta sem um
+  setor medido pode ser uma "volta-fantasma" com tempo curto demais).
+- "Melhor volta calculada" (só para relatórios SEM negrito): a volta válida
+  mais rápida. Antes do negrito, foi essa a regra — ela acertava 835/866.
+- "Melhor volta teórica": soma do melhor tempo de cada setor do piloto.
 """
 
 import statistics
 from typing import Optional
 
-from app.models.lap_data import PilotoLaps, ResultadoParsingPDF
+from app.models.lap_data import PilotoLaps, ResultadoParsingPDF, VoltaLeitura
 from app.models.metrics import (
     AnaliseSessao,
     ComparacaoSetor,
@@ -43,122 +44,125 @@ from app.models.metrics import (
     VoltaIdealEquipe,
 )
 
-# Mapeia o número do setor (1,2,3) para o nome do atributo na VoltaLeitura.
-_ATRIBUTO_SETOR = {1: "setor1_s", 2: "setor2_s", 3: "setor3_s"}
+# Tolerância para comparar tempos (o cronômetro mede em milésimos).
+_TOL = 0.0005
 
 
-def _melhor_setor_do_piloto(piloto: PilotoLaps, setor: int) -> Optional[float]:
-    """Menor tempo lido (não-None) do setor pedido.
+def _melhor_oficial(piloto: PilotoLaps) -> Optional[VoltaLeitura]:
+    """A volta destacada em negrito (a primeira, em caso de empate de tempo)."""
+    marcadas = [v for v in piloto.voltas if v.melhor_oficial and v.tempo_volta_s is not None]
+    return min(marcadas, key=lambda v: (v.tempo_volta_s, v.numero_volta)) if marcadas else None
 
-    Voltas de SAÍDA de box ficam de fora: o cronômetro não conta parte do
-    tempo dessas voltas, então os splits delas não são confiáveis (nos dados
-    reais há saídas de box "mais rápidas" que a pole). Voltas de entrada
-    ('p') entram: os setores antes do box são medidos normalmente e os de
-    entrada no box são lentos — nunca serão o mínimo. None se não houver
-    leitura aproveitável.
+
+def _candidatas(piloto: PilotoLaps) -> list[VoltaLeitura]:
+    """Voltas completas que não são de box (entrada nem saída)."""
+    return [v for v in piloto.voltas if not v.eh_volta_pit and not v.eh_volta_saida_box and v.completa]
+
+
+def _desconsideradas(piloto: PilotoLaps, usa_destaque: bool) -> set[int]:
+    """Voltas completas mais rápidas que a melhor oficial (canceladas pela cronometragem)."""
+    if not usa_destaque:
+        return set()
+    oficial = _melhor_oficial(piloto)
+    if oficial is None:
+        # Relatório com negrito, mas este piloto não tem melhor volta oficial:
+        # nenhuma volta dele valeu para a cronometragem.
+        return {v.numero_volta for v in _candidatas(piloto)}
+    return {v.numero_volta for v in _candidatas(piloto) if v.tempo_volta_s < oficial.tempo_volta_s - _TOL}
+
+
+def _voltas_validas(piloto: PilotoLaps, desconsideradas: set[int]) -> list[VoltaLeitura]:
+    """Base do ritmo (mediana), da consistência e dos outliers."""
+    return [v for v in _candidatas(piloto) if v.numero_volta not in desconsideradas]
+
+
+def _melhor_setor(piloto: PilotoLaps, indice: int, desconsideradas: set[int]) -> Optional[float]:
     """
-    atributo = _ATRIBUTO_SETOR[setor]
+    Menor tempo lido do setor `indice` (0 = S1). Ficam de fora a saída de box
+    (split não confiável) e as voltas desconsideradas pela cronometragem. A
+    volta de ENTRADA ('p') entra: os setores antes do box são medidos
+    normalmente e o de entrada no box é lento — nunca será o mínimo.
+    """
     tempos = [
-        getattr(v, atributo)
+        v.setores_s[indice]
         for v in piloto.voltas
-        if getattr(v, atributo) is not None and not v.eh_volta_saida_box
+        if indice < len(v.setores_s)
+        and v.setores_s[indice] is not None
+        and not v.eh_volta_saida_box
+        and v.numero_volta not in desconsideradas
     ]
     return min(tempos) if tempos else None
 
 
-def _voltas_validas(piloto: PilotoLaps):
-    """
-    Voltas "válidas/limpas": não são de pit, NEM de saída de box, e têm os
-    TRÊS setores lidos.
-
-    - Exigir os três setores descarta as voltas-fantasma (tempo de volta sem
-      um dos setores medido, que sai curto demais).
-    - Excluir a saída de box (volta 1 ou volta após uma 'p') descarta os
-      totais irreais em que o tempo parado no box não foi contado — é o mesmo
-      critério da cronometragem oficial (essas voltas nunca são o Best Tm).
-    Ver explicação no topo do arquivo.
-    """
-    return [
-        v
-        for v in piloto.voltas
-        if not v.eh_volta_pit
-        and not v.eh_volta_saida_box
-        and v.tempo_volta_s is not None
-        and v.setor1_s is not None
-        and v.setor2_s is not None
-        and v.setor3_s is not None
-    ]
+def _usa_destaque(pilotos: list[PilotoLaps]) -> bool:
+    """O relatório marca a melhor volta em negrito? (decide a regra da melhor volta)"""
+    return any(v.melhor_oficial for p in pilotos for v in p.voltas)
 
 
-def calcular_metricas_piloto(piloto: PilotoLaps) -> MetricasPiloto:
+def calcular_metricas_piloto(
+    piloto: PilotoLaps, num_setores: int, usa_destaque: bool
+) -> MetricasPiloto:
     """Calcula todas as métricas individuais de um piloto."""
     avisos: list[str] = []
-
-    # Voltas válidas (não-pit, com os 3 setores). Base da melhor volta e das
-    # estatísticas — ver _voltas_validas e o cabeçalho do arquivo.
-    validas = _voltas_validas(piloto)
+    desconsideradas = _desconsideradas(piloto, usa_destaque)
+    validas = _voltas_validas(piloto, desconsideradas)
     tempos_validos = [v.tempo_volta_s for v in validas]
 
-    # Melhor volta: menor tempo entre as voltas válidas. Guardamos também o
-    # NÚMERO da volta em que ela ocorreu (equivale à coluna NA do oficial).
-    if validas:
-        volta_mais_rapida = min(validas, key=lambda v: v.tempo_volta_s)
-        melhor_volta = volta_mais_rapida.tempo_volta_s
-        numero_volta_melhor = volta_mais_rapida.numero_volta
+    # --- Melhor volta ---
+    origem = None
+    if usa_destaque:
+        oficial = _melhor_oficial(piloto)
+        melhor_volta = oficial.tempo_volta_s if oficial else None
+        numero_volta_melhor = oficial.numero_volta if oficial else None
+        origem = "oficial" if oficial else None
+        if oficial is None:
+            avisos.append("Sem melhor volta oficial (nenhuma volta válida para a cronometragem).")
+    elif validas:
+        v = min(validas, key=lambda v: v.tempo_volta_s)
+        melhor_volta, numero_volta_melhor, origem = v.tempo_volta_s, v.numero_volta, "calculada"
     else:
-        melhor_volta = None
-        numero_volta_melhor = None
-        avisos.append("Sem voltas válidas (não-pit, com os 3 setores) — sem melhor volta.")
+        melhor_volta = numero_volta_melhor = None
+        avisos.append("Sem voltas válidas (fora do box, com todos os setores) — sem melhor volta.")
 
-    # Melhores setores do piloto.
-    s1 = _melhor_setor_do_piloto(piloto, 1)
-    s2 = _melhor_setor_do_piloto(piloto, 2)
-    s3 = _melhor_setor_do_piloto(piloto, 3)
+    if desconsideradas and usa_destaque and melhor_volta is not None:
+        lista = ", ".join(str(n) for n in sorted(desconsideradas))
+        avisos.append(
+            f"Volta(s) {lista} mais rápida(s) que a melhor oficial — desconsiderada(s) pela "
+            f"cronometragem (provável cancelamento); fora do ritmo e dos melhores setores."
+        )
 
-    # Volta teórica: só existe se os TRÊS setores têm leitura.
-    if s1 is not None and s2 is not None and s3 is not None:
-        teorica = s1 + s2 + s3
+    # --- Setores e volta teórica ---
+    setores = [_melhor_setor(piloto, i, desconsideradas) for i in range(num_setores)]
+    if setores and all(s is not None for s in setores):
+        teorica = round(sum(setores), 3)
     else:
         teorica = None
-        faltando = [str(n) for n, v in ((1, s1), (2, s2), (3, s3)) if v is None]
+        faltando = [str(i + 1) for i, s in enumerate(setores) if s is None]
         avisos.append(
             f"Volta teórica não calculada: sem leitura válida no(s) setor(es) {', '.join(faltando)}."
         )
+    gap = round(melhor_volta - teorica, 3) if melhor_volta is not None and teorica is not None else None
 
-    # Gap real -> teórica.
-    if melhor_volta is not None and teorica is not None:
-        gap = melhor_volta - teorica
-    else:
-        gap = None
-
-    # Estatísticas das voltas válidas (mesmo conjunto da melhor volta).
+    # --- Ritmo e consistência (voltas válidas) ---
     mediana = statistics.median(tempos_validos) if tempos_validos else None
     if not tempos_validos:
         avisos.append("Sem voltas válidas — sem mediana.")
-    # Desvio padrão amostral exige pelo menos 2 valores.
     if len(tempos_validos) >= 2:
         desvio = statistics.stdev(tempos_validos)
     else:
         desvio = None
         avisos.append("Menos de 2 voltas válidas — sem desvio padrão (consistência).")
 
-    # SSTRAP (velocidade de radar) sobre voltas lançadas (nem pit, nem saída
-    # de box): maior valor = ponta; média = velocidade típica em ritmo.
-    sstraps = [
+    # --- Radar, só em voltas fora do box ---
+    radares = [
         v.velocidade_radar_kmh
         for v in piloto.voltas
-        if not v.eh_volta_pit
-        and not v.eh_volta_saida_box
-        and v.velocidade_radar_kmh is not None
+        if not v.eh_volta_pit and not v.eh_volta_saida_box and v.velocidade_radar_kmh is not None
     ]
-    melhor_sstrap = max(sstraps) if sstraps else None
-    sstrap_medio = statistics.mean(sstraps) if sstraps else None
-    if not sstraps:
-        avisos.append("Sem leitura de radar (SSTRAP) em voltas não-pit.")
+    melhor_radar = max(radares) if radares else None
+    radar_medio = statistics.mean(radares) if radares else None
 
-    # Outliers de tráfego/bandeira: voltas válidas acima de mediana + 1,5x
-    # desvio. Só sinalizamos (não apagamos): a mediana é robusta e quase não
-    # sofre, mas o engenheiro precisa saber quais voltas "sujas" existem.
+    # --- Outliers de tráfego/bandeira (sinalizados, não removidos) ---
     voltas_outlier: list[int] = []
     if mediana is not None and desvio is not None:
         limite = mediana + 1.5 * desvio
@@ -167,117 +171,97 @@ def calcular_metricas_piloto(piloto: PilotoLaps) -> MetricasPiloto:
     return MetricasPiloto(
         numero_carro=piloto.numero_carro,
         nome=piloto.nome,
+        classe=piloto.classe,
         melhor_volta_s=melhor_volta,
+        origem_melhor_volta=origem,
         numero_volta_melhor=numero_volta_melhor,
-        melhor_sstrap_kmh=melhor_sstrap,
-        sstrap_medio_kmh=sstrap_medio,
-        voltas_outlier=voltas_outlier,
+        voltas_desconsideradas=sorted(desconsideradas),
         melhor_volta_teorica_s=teorica,
         gap_real_para_teorica_s=gap,
         mediana_voltas_limpas_s=mediana,
         consistencia_desvio_padrao_s=desvio,
         num_voltas_limpas=len(validas),
-        melhor_setor1_s=s1,
-        melhor_setor2_s=s2,
-        melhor_setor3_s=s3,
+        melhores_setores_s=setores,
+        melhor_sstrap_kmh=melhor_radar,
+        sstrap_medio_kmh=radar_medio,
+        voltas_outlier=voltas_outlier,
         avisos=avisos,
     )
 
 
-def calcular_volta_ideal_equipe(pilotos: list[PilotoLaps]) -> VoltaIdealEquipe:
-    """
-    Combina o melhor tempo de cada setor entre TODOS os pilotos.
-    Para cada setor, guarda também de quem é o melhor tempo.
-    """
+def calcular_volta_ideal_equipe(
+    pilotos: list[PilotoLaps], num_setores: int, usa_destaque: bool
+) -> VoltaIdealEquipe:
+    """Combina o melhor tempo de cada setor entre TODOS os pilotos (e de quem é)."""
     avisos: list[str] = []
-    donos: dict[int, DonoDoSetor] = {}
+    donos: list[DonoDoSetor] = []
+    descons = {p.numero_carro: _desconsideradas(p, usa_destaque) for p in pilotos}
 
-    for setor in (1, 2, 3):
+    for i in range(num_setores):
         melhor_tempo: Optional[float] = None
         dono: Optional[PilotoLaps] = None
         for piloto in pilotos:
-            t = _melhor_setor_do_piloto(piloto, setor)
+            t = _melhor_setor(piloto, i, descons[piloto.numero_carro])
             if t is not None and (melhor_tempo is None or t < melhor_tempo):
-                melhor_tempo = t
-                dono = piloto
+                melhor_tempo, dono = t, piloto
         if melhor_tempo is None:
-            avisos.append(f"Setor {setor}: nenhum piloto tem leitura válida — não entra na volta ideal.")
-            donos[setor] = DonoDoSetor(setor=setor)
+            avisos.append(f"Setor {i + 1}: nenhum piloto tem leitura válida — não entra na volta ideal.")
+            donos.append(DonoDoSetor(setor=i + 1))
         else:
-            donos[setor] = DonoDoSetor(
-                setor=setor,
-                tempo_s=melhor_tempo,
-                numero_carro_dono=dono.numero_carro,
-                nome_dono=dono.nome,
+            donos.append(
+                DonoDoSetor(
+                    setor=i + 1, tempo_s=melhor_tempo,
+                    numero_carro_dono=dono.numero_carro, nome_dono=dono.nome,
+                )
             )
 
-    tempos = [donos[s].tempo_s for s in (1, 2, 3)]
-    total = sum(tempos) if all(t is not None for t in tempos) else None
-
-    return VoltaIdealEquipe(
-        setor1=donos[1],
-        setor2=donos[2],
-        setor3=donos[3],
-        total_s=total,
-        avisos=avisos,
-    )
+    tempos = [d.tempo_s for d in donos]
+    total = round(sum(tempos), 3) if tempos and all(t is not None for t in tempos) else None
+    return VoltaIdealEquipe(setores=donos, total_s=total, avisos=avisos)
 
 
-def comparar_setores(pilotos: list[PilotoLaps]) -> list[ComparacaoSetor]:
+def comparar_setores(
+    pilotos: list[PilotoLaps], num_setores: int, usa_destaque: bool
+) -> list[ComparacaoSetor]:
     """
-    Para cada setor (1,2,3), compara o melhor tempo de cada piloto selecionado.
-    O mais rápido vira a referência (gap 0); os demais recebem o gap em
-    segundos e em % do tempo da referência.
+    Para cada setor, compara o melhor tempo de cada piloto. O mais rápido vira a
+    referência (gap 0); os demais recebem o gap em segundos e em % da referência.
     """
     comparacoes: list[ComparacaoSetor] = []
+    descons = {p.numero_carro: _desconsideradas(p, usa_destaque) for p in pilotos}
 
-    for setor in (1, 2, 3):
-        # Melhor tempo de setor de cada piloto (pode ser None).
-        melhores = {
-            p.numero_carro: (_melhor_setor_do_piloto(p, setor), p) for p in pilotos
-        }
-        # Referência = menor tempo válido entre os pilotos comparados.
-        tempos_validos = [(t, p) for (t, p) in melhores.values() if t is not None]
+    for i in range(num_setores):
+        setor = i + 1
+        melhores = {p.numero_carro: _melhor_setor(p, i, descons[p.numero_carro]) for p in pilotos}
+        validos = [(t, p) for p in pilotos if (t := melhores[p.numero_carro]) is not None]
         avisos: list[str] = []
-        if not tempos_validos:
-            avisos.append(f"Setor {setor}: nenhum dos pilotos selecionados tem leitura válida.")
+        if not validos:
+            avisos.append(f"Setor {setor}: nenhum dos pilotos tem leitura válida.")
             comparacoes.append(ComparacaoSetor(setor=setor, avisos=avisos))
             continue
 
-        ref_tempo, ref_piloto = min(tempos_validos, key=lambda item: item[0])
-
+        ref_tempo, ref_piloto = min(validos, key=lambda item: item[0])
         linhas: list[GapSetorPiloto] = []
         for piloto in pilotos:
-            tempo, _ = melhores[piloto.numero_carro]
+            tempo = melhores[piloto.numero_carro]
             if tempo is None:
-                gap_s = None
-                gap_pct = None
-                avisos.append(
-                    f"Setor {setor}: ({piloto.numero_carro}) {piloto.nome} sem leitura válida."
-                )
+                gap_s = gap_pct = None
+                avisos.append(f"Setor {setor}: ({piloto.numero_carro}) {piloto.nome} sem leitura válida.")
             else:
-                gap_s = tempo - ref_tempo
+                gap_s = round(tempo - ref_tempo, 3)
                 gap_pct = (gap_s / ref_tempo) * 100 if ref_tempo else None
             linhas.append(
                 GapSetorPiloto(
-                    numero_carro=piloto.numero_carro,
-                    nome=piloto.nome,
-                    tempo_setor_s=tempo,
-                    gap_para_referencia_s=gap_s,
-                    gap_para_referencia_pct=gap_pct,
+                    numero_carro=piloto.numero_carro, nome=piloto.nome, tempo_setor_s=tempo,
+                    gap_para_referencia_s=gap_s, gap_para_referencia_pct=gap_pct,
                 )
             )
-
         comparacoes.append(
             ComparacaoSetor(
-                setor=setor,
-                referencia_numero_carro=ref_piloto.numero_carro,
-                referencia_tempo_s=ref_tempo,
-                pilotos=linhas,
-                avisos=avisos,
+                setor=setor, referencia_numero_carro=ref_piloto.numero_carro,
+                referencia_tempo_s=ref_tempo, pilotos=linhas, avisos=avisos,
             )
         )
-
     return comparacoes
 
 
@@ -288,12 +272,16 @@ def montar_analise_sessao(resultado: ResultadoParsingPDF) -> AnaliseSessao:
     frontend filtra os pilotos que quiser mostrar).
     """
     pilotos = resultado.pilotos
+    n = resultado.num_setores
+    destaque = _usa_destaque(pilotos)
     return AnaliseSessao(
         arquivo_origem=resultado.arquivo_origem,
         num_pilotos=len(pilotos),
-        pilotos=[calcular_metricas_piloto(p) for p in pilotos],
-        volta_ideal_equipe=calcular_volta_ideal_equipe(pilotos),
-        comparacao_setores=comparar_setores(pilotos),
+        num_setores=n,
+        tem_radar=resultado.tem_radar,
+        pilotos=[calcular_metricas_piloto(p, n, destaque) for p in pilotos],
+        volta_ideal_equipe=calcular_volta_ideal_equipe(pilotos, n, destaque),
+        comparacao_setores=comparar_setores(pilotos, n, destaque),
         voltas_por_carro={p.numero_carro: p.voltas for p in pilotos},
         avisos_parsing=resultado.avisos,
     )

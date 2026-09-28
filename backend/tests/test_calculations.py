@@ -55,7 +55,7 @@ def test_melhor_volta_bate_com_a_oficial(pilotos):
     """A melhor volta calculada deve bater com o 'Best Tm' oficial, para todos."""
     por_carro = {p.numero_carro: p for p in pilotos}
     for carro, txt in MELHOR_VOLTA_OFICIAL_TXT.items():
-        m = calcular_metricas_piloto(por_carro[carro])
+        m = calcular_metricas_piloto(por_carro[carro], 3, True)
         assert m.melhor_volta_s == pytest.approx(_para_segundos(txt)), carro
 
 
@@ -63,7 +63,7 @@ def test_volta_teorica_nunca_maior_que_a_real(pilotos):
     """Invariante: a volta teórica (melhores setores) nunca é mais lenta que a
     melhor volta real, porque os setores da melhor volta são candidatos."""
     for p in pilotos:
-        m = calcular_metricas_piloto(p)
+        m = calcular_metricas_piloto(p, 3, True)
         if m.melhor_volta_s is not None and m.melhor_volta_teorica_s is not None:
             assert m.melhor_volta_teorica_s <= m.melhor_volta_s + 1e-9, p.numero_carro
 
@@ -75,10 +75,10 @@ def test_metricas_ljose_conferidas_a_mao(pilotos):
     Logo a teórica = 134.353 = a própria melhor volta, e o gap = 0.
     """
     ljose = next(p for p in pilotos if p.numero_carro == "171")
-    m = calcular_metricas_piloto(ljose)
-    assert m.melhor_setor1_s == pytest.approx(36.711)
-    assert m.melhor_setor2_s == pytest.approx(49.980)
-    assert m.melhor_setor3_s == pytest.approx(47.662)
+    m = calcular_metricas_piloto(ljose, 3, True)
+    assert m.melhores_setores_s[0] == pytest.approx(36.711)
+    assert m.melhores_setores_s[1] == pytest.approx(49.980)
+    assert m.melhores_setores_s[2] == pytest.approx(47.662)
     assert m.melhor_volta_teorica_s == pytest.approx(134.353)
     assert m.melhor_volta_s == pytest.approx(134.353)
     assert m.gap_real_para_teorica_s == pytest.approx(0.0, abs=1e-6)
@@ -90,7 +90,7 @@ def test_voltas_validas_excluem_pit_e_incompletas(pilotos):
     Das 10 voltas: v5 e v8 são pit; v1, v6 e v9 não têm S1. Sobram 5 válidas
     (v2, v3, v4, v7, v10)."""
     ljose = next(p for p in pilotos if p.numero_carro == "171")
-    m = calcular_metricas_piloto(ljose)
+    m = calcular_metricas_piloto(ljose, 3, True)
     assert m.num_voltas_limpas == 5
     assert m.consistencia_desvio_padrao_s is not None  # >= 2 voltas válidas
     assert m.mediana_voltas_limpas_s is not None
@@ -109,7 +109,7 @@ def test_numero_da_melhor_volta_bate_com_NA(pilotos):
     """O número da volta da melhor marca deve bater com a coluna NA oficial."""
     por_carro = {p.numero_carro: p for p in pilotos}
     for carro, na in NA_OFICIAL.items():
-        m = calcular_metricas_piloto(por_carro[carro])
+        m = calcular_metricas_piloto(por_carro[carro], 3, True)
         assert m.numero_volta_melhor == na, carro
 
 
@@ -117,7 +117,7 @@ def test_sstrap_e_outliers_ljose(pilotos):
     """SSTRAP de L.JOSE: melhor 184.3 km/h (volta 4). A volta 2 (com tráfego)
     deve ser sinalizada como outlier, sem ser removida da contagem de válidas."""
     ljose = next(p for p in pilotos if p.numero_carro == "171")
-    m = calcular_metricas_piloto(ljose)
+    m = calcular_metricas_piloto(ljose, 3, True)
     assert m.melhor_sstrap_kmh == pytest.approx(184.3)
     assert m.sstrap_medio_kmh is not None
     assert 2 in m.voltas_outlier
@@ -127,15 +127,15 @@ def test_sstrap_e_outliers_ljose(pilotos):
 def test_volta_ideal_equipe(pilotos):
     """A volta ideal soma os melhores setores do grid todo e deve ser <= a
     melhor volta do piloto mais rápido da sessão."""
-    ideal = calcular_volta_ideal_equipe(pilotos)
+    ideal = calcular_volta_ideal_equipe(pilotos, 3, True)
     assert ideal.total_s is not None
     # Cada setor tem dono identificado.
-    for setor in (ideal.setor1, ideal.setor2, ideal.setor3):
+    for setor in ideal.setores:
         assert setor.tempo_s is not None
         assert setor.numero_carro_dono is not None
     # total = soma dos três setores.
     assert ideal.total_s == pytest.approx(
-        ideal.setor1.tempo_s + ideal.setor2.tempo_s + ideal.setor3.tempo_s
+        sum(s.tempo_s for s in ideal.setores)
     )
     # A melhor volta do grid é 2:14.353 (171). A ideal não pode ser mais lenta.
     assert ideal.total_s <= _para_segundos("2:14.353") + 1e-9
@@ -146,7 +146,7 @@ def test_comparar_setores_referencia_tem_gap_zero(pilotos):
     e os demais têm gap positivo em segundos e %."""
     por_carro = {p.numero_carro: p for p in pilotos}
     selecionados = [por_carro["171"], por_carro["411"], por_carro["197"]]
-    comparacoes = comparar_setores(selecionados)
+    comparacoes = comparar_setores(selecionados, 3, True)
     assert len(comparacoes) == 3
     for comp in comparacoes:
         ref = comp.referencia_numero_carro

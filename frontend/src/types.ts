@@ -11,9 +11,10 @@ export interface VoltaLeitura {
    *  contado pelo cronômetro, então o total é irreal e fica fora de tudo. */
   eh_volta_saida_box: boolean
   tempo_volta_s: number | null
-  setor1_s: number | null
-  setor2_s: number | null
-  setor3_s: number | null
+  /** Destacada em negrito no PDF: a melhor volta OFICIAL do piloto. */
+  melhor_oficial: boolean
+  /** Um tempo por setor (S1, S2…); a quantidade vem do cabeçalho do PDF. */
+  setores_s: (number | null)[]
   velocidade_radar_kmh: number | null
   campos_ausentes: string[]
 }
@@ -24,6 +25,8 @@ export interface MetadadosSessao {
   sessao: string | null
   data_hora: string | null
   duracao: string | null
+  etapa: string | null
+  tipo_sessao: 'treino' | 'qualy' | 'corrida' | null
 }
 
 export interface MetricasPiloto {
@@ -32,15 +35,17 @@ export interface MetricasPiloto {
   classe: string | null
   posicao_oficial: number | null
   melhor_volta_s: number | null
+  /** 'oficial' = destacada no PDF; 'calculada' = relatório sem destaque. */
+  origem_melhor_volta: 'oficial' | 'calculada' | null
+  /** Voltas mais rápidas que a oficial: canceladas pela cronometragem. */
+  voltas_desconsideradas: number[]
   melhor_volta_teorica_s: number | null
   gap_real_para_teorica_s: number | null
   mediana_voltas_limpas_s: number | null
   consistencia_desvio_padrao_s: number | null
   num_voltas_limpas: number
   numero_volta_melhor: number | null
-  melhor_setor1_s: number | null
-  melhor_setor2_s: number | null
-  melhor_setor3_s: number | null
+  melhores_setores_s: (number | null)[]
   melhor_sstrap_kmh: number | null
   sstrap_medio_kmh: number | null
   voltas_outlier: number[]
@@ -55,9 +60,7 @@ export interface DonoDoSetor {
 }
 
 export interface VoltaIdealEquipe {
-  setor1: DonoDoSetor
-  setor2: DonoDoSetor
-  setor3: DonoDoSetor
+  setores: DonoDoSetor[]
   total_s: number | null
   avisos: string[]
 }
@@ -81,6 +84,8 @@ export interface ComparacaoSetor {
 export interface AnaliseSessao {
   arquivo_origem: string
   num_pilotos: number
+  num_setores: number
+  tem_radar: boolean
   metadados: MetadadosSessao | null
   pilotos: MetricasPiloto[]
   volta_ideal_equipe: VoltaIdealEquipe

@@ -35,13 +35,29 @@ class MetricasPiloto(BaseModel):
     )
 
     melhor_volta_s: Optional[float] = Field(
-        None, description="Menor tempo total entre as voltas não-pit. None se não houver."
+        None, description="Melhor volta do piloto (ver origem_melhor_volta). None se não houver."
+    )
+    origem_melhor_volta: Optional[str] = Field(
+        None,
+        description=(
+            "'oficial' = a volta que o próprio PDF destaca em negrito (já descontadas "
+            "voltas canceladas pela direção de prova); 'calculada' = relatório sem "
+            "destaque, então aplicamos a regra da volta completa mais rápida."
+        ),
+    )
+    voltas_desconsideradas: list[int] = Field(
+        default_factory=list,
+        description=(
+            "Voltas completas MAIS RÁPIDAS que a melhor oficial: a cronometragem as "
+            "desconsiderou (provável cancelamento, ex.: limite de pista). Ficam fora do "
+            "ritmo e dos melhores setores."
+        ),
     )
     melhor_volta_teorica_s: Optional[float] = Field(
         None,
         description=(
-            "Soma do melhor S1 + melhor S2 + melhor S3 do piloto. None se algum "
-            "setor não tiver nenhuma leitura válida."
+            "Soma dos melhores setores do piloto. None se algum setor não tiver "
+            "nenhuma leitura válida."
         ),
     )
     gap_real_para_teorica_s: Optional[float] = Field(
@@ -70,9 +86,10 @@ class MetricasPiloto(BaseModel):
         None, description="Número da volta em que o piloto fez a melhor volta (coluna NA do oficial)."
     )
 
-    melhor_setor1_s: Optional[float] = None
-    melhor_setor2_s: Optional[float] = None
-    melhor_setor3_s: Optional[float] = None
+    melhores_setores_s: list[Optional[float]] = Field(
+        default_factory=list,
+        description="Melhor tempo de cada setor (S1, S2…), na ordem. None = sem leitura válida.",
+    )
 
     melhor_sstrap_kmh: Optional[float] = Field(
         None, description="Maior velocidade de radar (km/h) entre as voltas não-pit. Indício de ponta."
@@ -108,11 +125,11 @@ class VoltaIdealEquipe(BaseModel):
     É uma meta teórica: ninguém fez essa volta, mas mostra o potencial do grid.
     """
 
-    setor1: DonoDoSetor
-    setor2: DonoDoSetor
-    setor3: DonoDoSetor
+    setores: list[DonoDoSetor] = Field(
+        default_factory=list, description="O dono de cada setor (S1, S2…), na ordem."
+    )
     total_s: Optional[float] = Field(
-        None, description="Soma dos três melhores setores. None se algum setor não tiver leitura."
+        None, description="Soma dos melhores setores. None se algum setor não tiver leitura."
     )
     avisos: list[str] = Field(default_factory=list)
 
@@ -151,6 +168,8 @@ class AnaliseSessao(BaseModel):
 
     arquivo_origem: str
     num_pilotos: int
+    num_setores: int = Field(0, description="Quantos setores a pista tem neste relatório.")
+    tem_radar: bool = Field(False, description="Se o relatório traz velocidade de radar.")
     metadados: Optional[dict] = Field(
         None,
         description="Cabeçalho da sessão extraído do PDF: evento, pista, sessão, data/hora, duração.",

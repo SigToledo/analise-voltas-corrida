@@ -4,10 +4,11 @@ Ponto de entrada do backend FastAPI.
 Rotas:
 - GET  /health   -> checagem simples de que o servidor está no ar.
 - POST /analise  -> recebe o PDF "Laptimes" (obrigatório) e, opcionalmente, o
-                    resumo "QualifyReduced" da mesma sessão. Detecta o tipo de
-                    cada arquivo antes de qualquer parsing: alimentar o parser
-                    errado produziria lixo silencioso, então arquivo do tipo
-                    errado vira erro claro dizendo O QUE foi enviado.
+                    resumo oficial da mesma sessão (QualifyReduced ou RaceFull).
+                    Cada arquivo é IDENTIFICADO antes de qualquer parsing:
+                    alimentar o parser errado produziria lixo silencioso, então
+                    arquivo do tipo errado vira erro claro dizendo O QUE foi
+                    enviado.
 
 Para rodar em desenvolvimento, a partir da pasta backend/:
     uvicorn app.main:app --reload
@@ -21,11 +22,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.metrics.calculations import montar_analise_sessao
 from app.models.metrics import AnaliseSessao
-from app.parser.laptimes_parser import parse_laptimes_pdf
-from app.parser.qualify_parser import parse_qualify_pdf
-from app.parser.tipo_pdf import TipoPDF, detectar_tipo_pdf
+from app.parser.laptimes_parser import parse_laptimes
+from app.parser.pdf_texto import LeitorPDF
+from app.parser.resumo_parser import parse_resumo
+from app.parser.tipo_pdf import NOMES_RELATORIO, Identificacao, TipoRelatorio, identificar
 
-app = FastAPI(title="Análise de Voltas — API", version="0.2.0")
+app = FastAPI(title="Análise de Voltas — API", version="0.3.0")
 
 # Libera o frontend (Vite/Tauri em dev) a chamar a API do navegador.
 app.add_middleware(
@@ -35,12 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_NOMES_TIPO = {
-    TipoPDF.LAPTIMES: "Laptimes (volta a volta)",
-    TipoPDF.QUALIFY: "resumo QualifyReduced",
-    TipoPDF.QUALIFY_POR_CLASSE: "resumo QualifyReduced BY CLASS",
-    TipoPDF.DESCONHECIDO: "formato não reconhecido",
-}
+_TIPOS_RESUMO = (TipoRelatorio.RESUMO, TipoRelatorio.RESULTADO_CORRIDA)
 
 
 @app.get("/health")
@@ -49,93 +46,102 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def _salvar_temporario(arquivo: UploadFile) -> str:
-    """Grava o upload num arquivo temporário e devolve o caminho."""
+async def _salvar_temporario(arquivo: UploadFile, temporarios: list[str]) -> str:
+    """Grava o upload num temporário e o registra em `temporarios` (para apagar depois)."""
     if not arquivo.filename or not arquivo.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail=f"'{arquivo.filename}': envie um arquivo .pdf.")
     conteudo = await arquivo.read()
     if not conteudo:
         raise HTTPException(status_code=400, detail=f"'{arquivo.filename}': arquivo vazio.")
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    temporarios.append(tmp.name)
     tmp.write(conteudo)
     tmp.close()
     return tmp.name
+
+
+def _descrever(ident: Identificacao) -> str:
+    nome = NOMES_RELATORIO[ident.tipo]
+    return f"{nome} ({ident.detalhe})" if ident.detalhe else nome
 
 
 @app.post("/analise", response_model=AnaliseSessao)
 async def analisar(arquivo: UploadFile, resumo: UploadFile | None = None) -> AnaliseSessao:
     """
     `arquivo`: o PDF Laptimes — é dele que saem as voltas, setores e radar.
-    `resumo` (opcional): um dos QualifyReduced — acrescenta classe (ELITE/
-    MASTER) e posição oficial, e serve de conferência cruzada das voltas.
+    `resumo` (opcional): o QualifyReduced (treino/qualy) ou o RaceFull
+    (corrida) da mesma sessão — acrescenta classe e posição oficial e confere
+    a melhor volta calculada contra a oficial.
     """
-    caminho = await _salvar_temporario(arquivo)
-    caminho_resumo = await _salvar_temporario(resumo) if resumo is not None else None
+    # Todos os temporários ficam numa lista e o `finally` apaga todos — antes,
+    # um resumo inválido interrompia a função antes do `try` e o PDF principal
+    # ficava esquecido no disco.
+    temporarios: list[str] = []
     try:
-        # --- 1. Detecta o tipo do arquivo principal ---
+        caminho = await _salvar_temporario(arquivo, temporarios)
+        caminho_resumo = await _salvar_temporario(resumo, temporarios) if resumo else None
+
         try:
-            tipo, metadados = detectar_tipo_pdf(caminho)
+            leitor = LeitorPDF(caminho)
         except Exception as erro:
             raise HTTPException(
-                status_code=422,
-                detail=f"'{arquivo.filename}' não pôde ser lido como PDF: {erro}",
+                status_code=422, detail=f"'{arquivo.filename}' não pôde ser aberto como PDF: {erro}"
             ) from erro
+        with leitor:
+            ident = identificar(leitor)
+            if ident.tipo in _TIPOS_RESUMO:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"'{arquivo.filename}' é o {_descrever(ident)}, que só traz a melhor volta "
+                        "de cada piloto. Para a análise volta a volta, envie o relatório "
+                        "'Laptimes' como arquivo principal — o resumo pode ir no campo "
+                        "opcional, para trazer classes e posições."
+                    ),
+                )
+            if ident.tipo is not TipoRelatorio.LAPTIMES:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"'{arquivo.filename}': {_descrever(ident)}. O app analisa o relatório "
+                        "'Laptimes' (volta a volta) do cronômetro Orbits/MyLaps."
+                    ),
+                )
+            resultado = parse_laptimes(leitor, nome_arquivo=arquivo.filename)
 
-        if tipo in (TipoPDF.QUALIFY, TipoPDF.QUALIFY_POR_CLASSE):
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"'{arquivo.filename}' é o {_NOMES_TIPO[tipo]}, que só tem a melhor "
-                    "volta de cada piloto. Para a análise volta a volta, envie o "
-                    "relatório 'Laptimes' como arquivo principal — o resumo pode ir "
-                    "no campo opcional, para trazer as classes."
-                ),
-            )
-        if tipo is TipoPDF.DESCONHECIDO:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"'{arquivo.filename}' não parece um relatório Orbits/MyLaps "
-                    "(Laptimes ou QualifyReduced). Confira o arquivo exportado do cronômetro."
-                ),
-            )
-
-        # --- 2. Parsing do Laptimes ---
-        resultado = parse_laptimes_pdf(caminho)
         if not resultado.pilotos:
             raise HTTPException(
                 status_code=422,
                 detail="Nenhum piloto encontrado no PDF. Confirme que é o relatório 'Laptimes'.",
             )
-        resultado.arquivo_origem = arquivo.filename
         analise = montar_analise_sessao(resultado)
-        analise.metadados = metadados.__dict__
+        analise.metadados = ident.metadados.como_dict()
 
-        # --- 3. Resumo opcional: classes, posição oficial e conferência ---
         if caminho_resumo is not None:
             _mesclar_resumo(analise, caminho_resumo, resumo.filename)
-
         return analise
     finally:
-        os.unlink(caminho)
-        if caminho_resumo is not None:
-            os.unlink(caminho_resumo)
+        for caminho_tmp in temporarios:
+            try:
+                os.unlink(caminho_tmp)
+            except OSError:
+                pass
 
 
 def _mesclar_resumo(analise: AnaliseSessao, caminho_resumo: str, nome_arquivo: str) -> None:
     """
     Enriquece a análise com o resumo oficial: classe e posição por carro, e
-    valida a contagem de voltas (divergência vira aviso — dado nunca é
-    ajustado em silêncio).
+    confere a melhor volta (divergência vira aviso — o dado nunca é ajustado).
     """
-    tipo, _ = detectar_tipo_pdf(caminho_resumo)
-    if tipo not in (TipoPDF.QUALIFY, TipoPDF.QUALIFY_POR_CLASSE):
-        analise.avisos_parsing.append(
-            f"Resumo '{nome_arquivo}' ignorado: é {_NOMES_TIPO[tipo]}, não um QualifyReduced."
-        )
-        return
+    with LeitorPDF(caminho_resumo) as leitor:
+        ident = identificar(leitor)
+        if ident.tipo not in _TIPOS_RESUMO:
+            analise.avisos_parsing.append(
+                f"Resumo '{nome_arquivo}' ignorado: é {_descrever(ident)}, não QualifyReduced/RaceFull."
+            )
+            return
+        r = parse_resumo(leitor, ident, nome_arquivo=nome_arquivo)
 
-    r = parse_qualify_pdf(caminho_resumo, agrupado_por_classe=(tipo is TipoPDF.QUALIFY_POR_CLASSE))
     analise.avisos_parsing.extend(f"Resumo: {a}" for a in r.avisos)
     por_carro = {p.numero_carro: p for p in r.pilotos}
 
@@ -146,23 +152,31 @@ def _mesclar_resumo(analise: AnaliseSessao, caminho_resumo: str, nome_arquivo: s
                 f"Carro {piloto.numero_carro} está no Laptimes mas não no resumo oficial."
             )
             continue
-        piloto.classe = oficial.classe
-        # Na variante BY CLASS a posição reinicia por classe — só é a posição
-        # geral no resumo plano.
-        if tipo is TipoPDF.QUALIFY:
+        if oficial.classe:
+            piloto.classe = oficial.classe
+        # No BY CLASS a posição reinicia por classe: só vale como posição geral
+        # no resumo plano.
+        if not r.agrupado_por_classe:
             piloto.posicao_oficial = oficial.posicao
-        # Conferência: melhor volta calculada vs oficial (tolerância 1 ms).
         if (
             piloto.melhor_volta_s is not None
-            and abs(piloto.melhor_volta_s - oficial.melhor_volta_s) > 0.001
+            and oficial.melhor_volta_s is not None
+            and abs(piloto.melhor_volta_s - oficial.melhor_volta_s) > 0.0005
         ):
             analise.avisos_parsing.append(
-                f"Divergência no carro {piloto.numero_carro}: melhor volta calculada "
-                f"{piloto.melhor_volta_s:.3f}s difere do resumo oficial {oficial.melhor_volta_s:.3f}s."
+                f"Divergência no carro {piloto.numero_carro}: melhor volta {piloto.melhor_volta_s:.3f}s "
+                f"no Laptimes x {oficial.melhor_volta_s:.3f}s no resumo oficial."
             )
 
     faltantes = set(por_carro) - {p.numero_carro for p in analise.pilotos}
     for carro in sorted(faltantes):
-        analise.avisos_parsing.append(
-            f"Carro {carro} está no resumo oficial mas não foi lido do Laptimes."
-        )
+        oficial = por_carro[carro]
+        if not oficial.voltas and oficial.melhor_volta_s is None:
+            analise.avisos_parsing.append(
+                f"Carro {carro}: no resultado oficial sem nenhuma volta completada "
+                "(não largou ou abandonou) — por isso não aparece no volta a volta."
+            )
+        else:
+            analise.avisos_parsing.append(
+                f"Carro {carro} está no resumo oficial mas não foi lido do Laptimes."
+            )

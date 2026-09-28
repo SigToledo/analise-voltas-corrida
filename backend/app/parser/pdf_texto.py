@@ -22,6 +22,11 @@ class Palavra:
     x0: float
     x1: float
     top: float
+    destaque: bool = False
+    """Impressa em NEGRITO. O cronômetro destaca assim a melhor volta OFICIAL e
+    os melhores setores de cada piloto — seja com fonte bold de verdade
+    (Cascavel), seja com o "falso negrito" de texto impresso várias vezes
+    (Cuiabá)."""
 
     @property
     def x_centro(self) -> float:
@@ -33,11 +38,14 @@ class Palavra:
 ANCORAS_RODAPE = frozenset({"Chief", "Orbits", "www.mylaps.com", "Printed:"})
 
 
-def _remover_falso_negrito(chars: list[dict]) -> list[dict]:
+def _remover_falso_negrito(chars: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     O cronômetro imprime valores em destaque 3-4 vezes quase na mesma posição
     para simular negrito. Sem limpar, "48.415" vira "44448888....444411115555".
     Mantemos só a primeira cópia de cada caractere (mesmo texto a <1pt).
+
+    Devolve (mantidos, com_copia): `com_copia` são os caracteres mantidos que
+    TINHAM cópias — é assim que reconhecemos o destaque do falso negrito.
 
     Usa um índice por célula de 1pt em vez de comparar cada caractere com
     todos os anteriores: fica linear no número de caracteres (os relatórios de
@@ -46,36 +54,54 @@ def _remover_falso_negrito(chars: list[dict]) -> list[dict]:
     """
     indice: dict[tuple[str, int, int], list[dict]] = {}
     mantidos: list[dict] = []
+    com_copia: dict[int, dict] = {}
     for c in chars:
         cx, cy = int(c["x0"]), int(c["top"])
-        duplicado = False
+        original = None
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 for v in indice.get((c["text"], cx + dx, cy + dy), ()):
                     if abs(v["x0"] - c["x0"]) < 1.0 and abs(v["top"] - c["top"]) < 1.0:
-                        duplicado = True
+                        original = v
                         break
-                if duplicado:
+                if original is not None:
                     break
-            if duplicado:
+            if original is not None:
                 break
-        if not duplicado:
+        if original is None:
             indice.setdefault((c["text"], cx, cy), []).append(c)
             mantidos.append(c)
-    return mantidos
+        else:
+            com_copia[id(original)] = original
+    return mantidos, list(com_copia.values())
 
 
 def extrair_palavras(pagina) -> list[Palavra]:
-    """Palavras da página (pdfplumber), já sem o falso negrito."""
-    limpos = _remover_falso_negrito(pagina.chars)
+    """Palavras da página (pdfplumber), sem o falso negrito e com o destaque marcado."""
+    limpos, com_copia = _remover_falso_negrito(pagina.chars)
     ids = {id(c) for c in limpos}
     filtrada = pagina.filter(
         lambda obj: id(obj) in ids if obj.get("object_type") == "char" else True
     )
-    return [
-        Palavra(texto=w["text"], x0=w["x0"], x1=w["x1"], top=w["top"])
-        for w in filtrada.extract_words(use_text_flow=False, keep_blank_chars=False)
-    ]
+    # Posições (arredondadas) dos caracteres impressos em "falso negrito".
+    copias = {(round(c["x0"]), round(c["top"])) for c in com_copia}
+    palavras = []
+    for w in filtrada.extract_words(
+        use_text_flow=False, keep_blank_chars=False, extra_attrs=["fontname"]
+    ):
+        negrito_real = "bold" in w["fontname"].lower()
+        falso_negrito = any(
+            (round(x), round(w["top"]) + dy) in copias
+            for x in (w["x0"], w["x0"] + 1)
+            for dy in (-1, 0, 1)
+        )
+        palavras.append(
+            Palavra(
+                texto=w["text"], x0=w["x0"], x1=w["x1"], top=w["top"],
+                destaque=negrito_real or falso_negrito,
+            )
+        )
+    return palavras
 
 
 def agrupar_linhas(palavras: list[Palavra], tolerancia: float = 3.0) -> list[list[Palavra]]:

@@ -7,13 +7,9 @@ interface Props {
   selecionados: string[]
 }
 
-const SETORES = [1, 2, 3] as const
-
-/** Pega o melhor tempo de um setor (1,2,3) das métricas do piloto. */
+/** Melhor tempo do setor (1 = S1…) nas métricas do piloto. */
 function melhorSetor(p: MetricasPiloto, setor: number): number | null {
-  if (setor === 1) return p.melhor_setor1_s
-  if (setor === 2) return p.melhor_setor2_s
-  return p.melhor_setor3_s
+  return p.melhores_setores_s[setor - 1] ?? null
 }
 
 /**
@@ -46,6 +42,9 @@ function fundoGap(gap: number | null, maxGapSetor: number): string {
  */
 export function GanharTempoScreen({ analise, selecionados }: Props) {
   const ideal = analise.volta_ideal_equipe
+  // Quantos setores a pista tem vem do próprio relatório (3 em Cascavel e
+  // Cuiabá, mas pode ser 2 ou 4 em outra pista).
+  const SETORES = Array.from({ length: analise.num_setores }, (_, i) => i + 1)
   const pilotos = selecionados
     .map((c) => analise.pilotos.find((p) => p.numero_carro === c))
     .filter((p): p is MetricasPiloto => !!p)
@@ -73,7 +72,7 @@ export function GanharTempoScreen({ analise, selecionados }: Props) {
         )}
         <div className="setores">
           {SETORES.map((s) => {
-            const dono = s === 1 ? ideal.setor1 : s === 2 ? ideal.setor2 : ideal.setor3
+            const dono = ideal.setores[s - 1]
             return (
               <div key={s}>
                 Setor {s}:{' '}
