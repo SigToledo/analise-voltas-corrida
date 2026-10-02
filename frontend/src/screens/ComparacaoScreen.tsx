@@ -5,13 +5,13 @@ import {
   Line,
   ReferenceArea,
   ResponsiveContainer,
-  Scatter,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
 import { BarraFiltros } from '../components/Filtros'
 import { RitmoPorTrecho } from '../components/RitmoPorTrecho'
+import { TooltipVolta } from '../components/TooltipVolta'
 import { corDoPiloto } from '../cores'
 import { LIMITE_JANELA, marcasEixo, passoMarcadores } from '../escala'
 import { aplicarFiltros, type Filtros } from '../filtros'
@@ -155,6 +155,18 @@ export function ComparacaoScreen({
     : []
   const siglasUsadas = new Set(marcadores.flatMap((m) => m.pontos.map((p) => p.simbolo)))
 
+  // As letras entram na MESMA lista de dados do gráfico (uma linha por
+  // volta). Antes elas tinham uma lista própria, e isso confundia o gráfico
+  // sobre qual volta estava sob o mouse — a caixa com os tempos não aparecia.
+  for (const { carro, pontos } of marcadores) {
+    for (const m of pontos) {
+      const linha = dadosGrafico[m.volta - 1]
+      if (!linha) continue
+      linha[`${carro}#nivel`] = m.nivel
+      linha[`${carro}#simbolo`] = m.simbolo ?? null
+    }
+  }
+
   // Faixas de Safety Car (só no modo corrida), nas voltas dos selecionados.
   const faixasSC = faixasSafetyCar(analise.voltas_por_carro, selecionados)
   const temRelargada = selecionados.some((c) =>
@@ -276,17 +288,15 @@ export function ComparacaoScreen({
                   }}
                 />
               ))}
+              {/* Caixa ao passar o mouse: o tempo de cada selecionado na volta
+                  sob o cursor — inclusive Safety Car, largada e box. */}
               <Tooltip
-                contentStyle={{ background: 'var(--painel)', border: '1px solid var(--risco)' }}
-                labelStyle={{ color: 'var(--giz)' }}
-                formatter={(valor, nome, item) => {
-                  const dados = item?.payload as Record<string, unknown> | undefined
-                  const extra =
-                    (dados?.[`${nome}#melhor`] ? ' · melhor volta' : '') +
-                    (dados?.[`${nome}#tipo`] === 'relargada' ? ' · relargada' : '')
-                  return [`${formatarTempo(valor as number)}${extra}`, `Carro ${nome}`]
-                }}
-                labelFormatter={(l) => `Volta ${l}`}
+                content={<TooltipVolta analise={analise} selecionados={selecionados} />}
+                cursor={{ stroke: 'var(--giz-fraco)', strokeDasharray: '3 3' }}
+                isAnimationActive={false}
+                // Sem isto o gráfico esconde a caixa nas voltas em que nenhum
+                // selecionado tem ponto na linha (ex.: todo o Safety Car).
+                filterNull={false}
               />
               {selecionados.map((carro) => {
                 const cor = corDoPiloto(selecionados, carro)
@@ -327,28 +337,38 @@ export function ComparacaoScreen({
                   />
                 )
               })}
-              {/* Marcadores P / S / L na cor do piloto, numa faixa própria no
-                  rodapé do gráfico. */}
-              {marcadores.map(({ carro, pontos }) => (
-                <Scatter
+              {/* Marcadores P / S / L / × na cor do piloto, numa faixa própria
+                  no rodapé do gráfico: uma "linha" invisível que só desenha a
+                  letra em cada volta marcada. */}
+              {marcadores.map(({ carro }) => (
+                <Line
                   key={`marca-${carro}`}
-                  data={pontos}
-                  dataKey="nivel"
-                  isAnimationActive={false}
+                  dataKey={`${carro}#nivel`}
+                  stroke="none"
+                  connectNulls={false}
+                  activeDot={false}
+                  legendType="none"
                   tooltipType="none"
-                  shape={(props: { cx?: number; cy?: number; payload?: { simbolo?: string } }) => (
-                    <text
-                      x={props.cx}
-                      y={(props.cy ?? 0) + 4}
-                      textAnchor="middle"
-                      fontSize={11}
-                      fontWeight={700}
-                      fontFamily="var(--tipo-tempo)"
-                      fill={corDoPiloto(selecionados, carro)}
-                    >
-                      {props.payload?.simbolo}
-                    </text>
-                  )}
+                  isAnimationActive={false}
+                  dot={(props: { cx?: number; cy?: number; index?: number; payload?: Record<string, unknown> }) => {
+                    const chave = `marca-${carro}-${props.index}`
+                    const simbolo = props.payload?.[`${carro}#simbolo`] as string | null | undefined
+                    if (props.cx == null || props.cy == null || !simbolo) return <g key={chave} />
+                    return (
+                      <text
+                        key={chave}
+                        x={props.cx}
+                        y={props.cy + 4}
+                        textAnchor="middle"
+                        fontSize={11}
+                        fontWeight={700}
+                        fontFamily="var(--tipo-tempo)"
+                        fill={corDoPiloto(selecionados, carro)}
+                      >
+                        {simbolo}
+                      </text>
+                    )
+                  }}
                 />
               ))}
             </ComposedChart>
