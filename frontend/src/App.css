@@ -525,6 +525,56 @@ table.dados th {
   font-size: 0.8rem;
 }
 
+/* Caixa ao passar o mouse no gráfico: a volta e o tempo de cada selecionado. */
+.tooltip-volta {
+  background: var(--painel);
+  border: 1px solid var(--risco);
+  border-radius: 3px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  min-width: 15rem;
+}
+.tooltip-volta .titulo {
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--giz-fraco);
+  margin-bottom: 0.3rem;
+}
+.tooltip-volta .linha {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  align-items: baseline;
+  gap: 0 0.45rem;
+  padding: 0.15rem 0;
+}
+.tooltip-volta .linha i {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  display: inline-block;
+}
+.tooltip-volta .linha b {
+  color: var(--giz);
+  font-size: 1rem;
+}
+.tooltip-volta .marca {
+  grid-column: 4;
+  color: var(--ambar);
+  font-size: 0.75rem;
+}
+.tooltip-volta .setores {
+  grid-column: 2 / 5;
+  color: var(--giz-fraco);
+  font-size: 0.72rem;
+  white-space: pre;
+}
+.tooltip-volta .linha > .sem-leitura {
+  grid-column: 3 / 5;
+}
+
 /* Legenda embaixo do gráfico: um item por símbolo que aparece nele. */
 .legenda-grafico {
   text-align: left;
