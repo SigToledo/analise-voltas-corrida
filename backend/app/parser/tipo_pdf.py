@@ -13,6 +13,11 @@ A identificação vem ANTES de qualquer parsing: alimentar o parser errado
 produziria lixo silencioso. Ela usa os TÍTULOS da tabela (não o nome do
 arquivo, que o usuário pode renomear) e a linha da sessão ("Practice (...)",
 "Qualifying (...)", "Race (...)").
+
+Um ARQUIVO pode trazer mais de um relatório: o documento oficial compilado
+("RESULTADO - CLASSIFICATÓRIO", assinado pelos comissários) junta resumo e
+Laptimes de duas sessões num PDF só. `desmontar` separa o arquivo nos
+relatórios que ele contém, identificando página a página.
 """
 
 from __future__ import annotations
@@ -22,7 +27,7 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 
 from app.parser.cabecalho import Coluna, ler_titulos
-from app.parser.pdf_texto import LeitorPDF, Palavra, agrupar_linhas, celulas
+from app.parser.pdf_texto import FontePaginas, LeitorPDF, Palavra, TrechoPDF, agrupar_linhas, celulas
 
 
 class TipoRelatorio(str, Enum):
@@ -189,7 +194,7 @@ def _tem_secoes_de_classe(linhas_dados: list[list[Palavra]], colunas: list[Colun
     return False
 
 
-def identificar(leitor: LeitorPDF) -> Identificacao:
+def identificar(leitor: FontePaginas) -> Identificacao:
     """Identifica o relatório pela 1ª página (títulos da tabela + linha da sessão)."""
     linhas = agrupar_linhas(leitor.palavras(0))
     achado = localizar_cabecalho(linhas)
@@ -218,3 +223,59 @@ def identificar(leitor: LeitorPDF) -> Identificacao:
         )
         return Identificacao(tipo, meta, agrupado_por_classe=por_classe)
     return Identificacao(TipoRelatorio.DESCONHECIDO, meta)
+
+
+@dataclass
+class Relatorio:
+    """Um relatório dentro de um arquivo: o que ele é e em quais páginas está."""
+
+    ident: Identificacao
+    paginas: list[int]              # índices no PDF (0 = primeira página)
+
+    def descricao_paginas(self) -> str:
+        """'pág. 2–3' ou 'pág. 6', na numeração que o usuário vê no PDF."""
+        primeira, ultima = self.paginas[0] + 1, self.paginas[-1] + 1
+        return f"pág. {primeira}" if primeira == ultima else f"pág. {primeira}–{ultima}"
+
+
+def _mesmo_relatorio(a: Identificacao, b: Identificacao) -> bool:
+    """Mesmo tipo de tabela e mesma sessão (nome + horário do cabeçalho)."""
+    return (a.tipo, a.metadados.sessao, a.metadados.data_hora) == (
+        b.tipo, b.metadados.sessao, b.metadados.data_hora,
+    )
+
+
+def _sem_tabela(pagina: TrechoPDF) -> bool:
+    """Página sem nenhuma linha de títulos (capa, texto, página em branco)."""
+    return localizar_cabecalho(agrupar_linhas(pagina.palavras(0))) is None
+
+
+def desmontar(leitor: LeitorPDF) -> list[Relatorio]:
+    """
+    Separa o arquivo nos relatórios que ele contém. Toda página do cronômetro
+    repete o próprio cabeçalho (títulos da tabela, nome e horário da sessão),
+    então cada página é identificada sozinha, e as páginas SEGUIDAS com o
+    mesmo tipo e a mesma sessão formam um relatório. Ex.: o RESULTADO do
+    classificatório da Truck (Tarumã) vira 5 relatórios — resumo e Laptimes do
+    Classificatório, resumo e Laptimes do Top Qualifying, e o consolidado.
+
+    Página sem tabela nenhuma no meio do arquivo continua o relatório
+    anterior: é o que acontecia antes (o parser a pula com aviso).
+
+    Conferido nos 120 PDFs de samples/: todo relatório avulso do cronômetro
+    vira UM relatório, igual à identificação pela 1ª página — só o documento
+    compilado se divide.
+    """
+    relatorios: list[Relatorio] = []
+    for n in range(leitor.num_paginas):
+        pagina = TrechoPDF(leitor, [n])
+        ident = identificar(pagina)
+        anterior = relatorios[-1] if relatorios else None
+        if anterior is not None and (
+            _mesmo_relatorio(anterior.ident, ident)
+            or (ident.tipo is TipoRelatorio.DESCONHECIDO and _sem_tabela(pagina))
+        ):
+            anterior.paginas.append(n)
+        else:
+            relatorios.append(Relatorio(ident, [n]))
+    return relatorios

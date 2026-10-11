@@ -182,3 +182,41 @@ class LeitorPDF:
             return todas
         corte = limite_rodape(todas)
         return [p for p in todas if p.top < corte]
+
+    def numero_pagina(self, indice: int) -> int:
+        """Número da página como o usuário vê no PDF (1 = primeira)."""
+        return indice + 1
+
+
+class TrechoPDF:
+    """
+    Algumas páginas de um PDF já aberto, vistas como se fossem um PDF inteiro.
+
+    O documento oficial "compilado" (ex.: "RESULTADO - CLASSIFICATÓRIO",
+    assinado pelos comissários) junta vários relatórios num arquivo só:
+    resumo e Laptimes de mais de uma sessão. Cada relatório vira um trecho, e
+    os parsers o leem com a mesma interface do LeitorPDF (`num_paginas`,
+    `palavras`) — sem saber que há outras páginas em volta. Assim os parsers
+    não mudam nada para ler um documento compilado.
+    """
+
+    def __init__(self, leitor: LeitorPDF, paginas: list[int]):
+        self.leitor = leitor
+        self.paginas = paginas          # índices no PDF original (0 = primeira)
+        self.caminho = leitor.caminho
+
+    @property
+    def num_paginas(self) -> int:
+        return len(self.paginas)
+
+    def palavras(self, indice: int, com_rodape: bool = False) -> list[Palavra]:
+        """Palavras da `indice`-ésima página DO TRECHO (0 = primeira dele)."""
+        return self.leitor.palavras(self.paginas[indice], com_rodape)
+
+    def numero_pagina(self, indice: int) -> int:
+        """Número da página no PDF ORIGINAL — é o que o usuário vê ao abri-lo."""
+        return self.paginas[indice] + 1
+
+
+# O que os parsers aceitam: o PDF inteiro ou um trecho dele.
+FontePaginas = LeitorPDF | TrechoPDF

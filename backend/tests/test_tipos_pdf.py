@@ -10,9 +10,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.parser.pdf_texto import LeitorPDF
+from app.parser.laptimes_parser import parse_laptimes
+from app.parser.pdf_texto import LeitorPDF, TrechoPDF
 from app.parser.resumo_parser import parse_resumo_pdf
-from app.parser.tipo_pdf import TipoRelatorio, TipoSessao, identificar
+from app.parser.tipo_pdf import TipoRelatorio, TipoSessao, desmontar, identificar
 
 SAMPLES = Path(__file__).resolve().parents[2] / "samples"
 PDF_LAPTIMES = SAMPLES / "MBR - 4o TREINO OFICIAL MBR - GRUPO 1 - Laptimes_sec4.pdf"
@@ -25,6 +26,11 @@ CASC_RACEFULL = CASCAVEL / "SABADO" / "5ET - MBR - CORRIDA 1 - MBR - RaceFull.pd
 
 tem_cuiaba = pytest.mark.skipif(not PDF_LAPTIMES.exists(), reason="PDFs de Cuiabá ausentes")
 tem_cascavel = pytest.mark.skipif(not CASC_TREINO.exists(), reason="PDFs de Cascavel ausentes")
+
+# Documento oficial COMPILADO (assinado pelos comissários): resumo + Laptimes
+# do Classificatório e do Top Qualifying, mais o consolidado, num PDF só.
+TARUMA = SAMPLES / "8ET - FT - TARUMA" / "RESULTADO - CLASSIFICATORIO (FT BOMBA INJETORA).pdf"
+tem_taruma = pytest.mark.skipif(not TARUMA.exists(), reason="PDF compilado de Tarumã ausente")
 
 client = TestClient(app)
 
@@ -128,3 +134,30 @@ def test_analise_com_resumo_traz_classes():
     assert paioli["classe"] == "MASTER"
     # 26/26 batem com o oficial: nenhuma divergência de melhor volta
     assert not any("Divergência" in a for a in dados["avisos_parsing"])
+
+
+@tem_taruma
+def test_desmonta_o_documento_oficial_compilado():
+    """6 páginas, 5 relatórios: cada um com o tipo, a sessão e as páginas certas."""
+    with LeitorPDF(str(TARUMA)) as leitor:
+        relatorios = desmontar(leitor)
+        laptimes = parse_laptimes(TrechoPDF(leitor, relatorios[1].paginas))
+
+    assert [(r.ident.tipo, r.ident.metadados.sessao, r.descricao_paginas()) for r in relatorios] == [
+        (TipoRelatorio.RESUMO, "CLASSIFICATORIO - FT", "pág. 1"),
+        (TipoRelatorio.LAPTIMES, "CLASSIFICATORIO - FT", "pág. 2–3"),
+        (TipoRelatorio.RESUMO, "TOP QUALIFYING - FT", "pág. 4"),
+        (TipoRelatorio.LAPTIMES, "TOP QUALIFYING - FT", "pág. 5"),
+        (TipoRelatorio.NAO_SUPORTADO, None, "pág. 6"),
+    ]
+    assert [r.ident.metadados.data_hora for r in relatorios[:4]] == [
+        "10/10/2026 13:40", "10/10/2026 13:40", "10/10/2026 14:10", "10/10/2026 14:10",
+    ]
+    assert all(r.ident.metadados.tipo_sessao is TipoSessao.QUALY for r in relatorios[:4])
+    assert relatorios[4].ident.detalhe == "consolidado de sessões"
+
+    # O Laptimes do Classificatório continua da pág. 2 para a 3 (o #102 começa
+    # no fim da pág. 2): 17 carros, nenhum aviso.
+    assert len(laptimes.pilotos) == 17 and laptimes.avisos == []
+    b_manica = next(p for p in laptimes.pilotos if p.numero_carro == "102")
+    assert len(b_manica.voltas) == 12
