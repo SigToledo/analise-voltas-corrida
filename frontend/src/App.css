@@ -128,6 +128,12 @@
   color: var(--giz-fraco);
   font-size: 0.85rem;
 }
+/* Seletor de sessão (PDFs com mais de uma): o mesmo visual do de modo, numa
+   linha própria logo abaixo da faixa da sessão. */
+.seletor-sessao {
+  margin-top: -0.2rem;
+  row-gap: 0.4rem;
+}
 .btn-perigo {
   color: var(--giz-fraco);
   background: transparent;

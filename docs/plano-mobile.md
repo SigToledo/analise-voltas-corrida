@@ -59,7 +59,10 @@ reproduzir EXATAMENTE o resultado do Python:
   **Regerar depois do PR #1**: os gabaritos antigos são do parser por posição.
 - **M1 — Motor TS**: portar parser (Laptimes, detecção de tipo, resumo
   Qualify) e métricas; suíte de testes (vitest) contra o gabarito. Sem tela
-  nova. É a fase mais longa.
+  nova. É a fase mais longa. A detecção é PÁGINA A PÁGINA
+  (`tipo_pdf.desmontar`): o PDF oficial compilado traz vários relatórios, e
+  o gabarito dele vem um por relatório ("<nome>.pag2-3.parsing.json"). A
+  separação em sessões (`juntar.separar_sessoes`) também precisa ir junto.
 - **M2 — PWA instalável**: manifest + service worker (vite-plugin-pwa) no
   frontend, análise 100% no aparelho (o PDF nunca sai do celular);
   hospedagem estática gratuita (Vercel/Netlify); instalar no iPhone pelo

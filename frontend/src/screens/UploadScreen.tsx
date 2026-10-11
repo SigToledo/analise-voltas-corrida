@@ -85,6 +85,11 @@ export function UploadScreen({ aoConcluir }: Props) {
           Sessão em grupos (ex.: treino da MBR em Grupo 1 e Grupo 2)? Mande os PDFs de todos os
           grupos juntos: a análise fica numa tela só.
         </p>
+        <p className="upload-dica">
+          PDF oficial com várias sessões (ex.: o RESULTADO do classificatório, assinado pelos
+          comissários)? Pode mandar direto: o app separa as sessões e você escolhe qual ver no topo
+          da tela.
+        </p>
         <button onClick={() => input.current?.click()}>Escolher PDFs</button>
         <input
           ref={input}
