@@ -161,3 +161,44 @@ def test_desmonta_o_documento_oficial_compilado():
     assert len(laptimes.pilotos) == 17 and laptimes.avisos == []
     b_manica = next(p for p in laptimes.pilotos if p.numero_carro == "102")
     assert len(b_manica.voltas) == 12
+
+
+@tem_taruma
+def test_analise_do_documento_compilado_com_as_duas_sessoes():
+    """
+    O PDF que o app recusava na pista: agora abre o Classificatório (1ª sessão
+    do dia) com classe e posição do resumo da pág. 1, e o Top Qualifying fica
+    no seletor. Conferido contra o resultado oficial impresso no próprio PDF.
+    """
+    arquivos = [("arquivos", (TARUMA.name, TARUMA.read_bytes(), "application/pdf"))]
+    resp = client.post("/analise", files=arquivos)
+    assert resp.status_code == 200, resp.json()
+    d = resp.json()
+    assert [(s["sessao"], s["data_hora"], s["num_pilotos"], s["arquivos"]) for s in d["sessoes"]] == [
+        ("CLASSIFICATORIO - FT", "10/10/2026 13:40", 17, [f"{TARUMA.name} (pág. 2–3)"]),
+        ("TOP QUALIFYING - FT", "10/10/2026 14:10", 7, [f"{TARUMA.name} (pág. 5)"]),
+    ]
+    assert d["sessao_chave"] == d["sessoes"][0]["chave"]
+    assert d["arquivo_origem"] == f"{TARUMA.name} (pág. 2–3)"
+    assert d["modo"] == "qualy" and d["num_setores"] == 3 and d["tem_radar"]
+    # Só o consolidado da pág. 6 é ignorado: sem divergência nem resumo "de fora".
+    assert d["avisos_parsing"] == [
+        f"Arquivo ignorado — '{TARUMA.name} (pág. 6)': relatório não suportado (consolidado de sessões)."
+    ]
+    por_carro = {p["numero_carro"]: p for p in d["pilotos"]}
+    assert all(p["classe"] == "FT" for p in d["pilotos"])
+    conci = por_carro["377"]
+    assert conci["posicao_oficial"] == 1 and conci["melhor_volta_s"] == pytest.approx(84.643)
+    assert conci["numero_volta_melhor"] == 7
+    assert conci["voltas_desconsideradas"] == [2]   # 1:24.337 sem negrito
+    assert por_carro["79"]["melhor_volta_s"] is None and por_carro["79"]["posicao_oficial"] == 17
+
+    top = d["sessoes"][1]["chave"]
+    d2 = client.post("/analise", files=arquivos, data={"sessao": top}).json()
+    assert d2["sessao_chave"] == top and d2["num_pilotos"] == 7
+    assert d2["metadados"]["sessao"] == "TOP QUALIFYING - FT"
+    por_carro = {p["numero_carro"]: p for p in d2["pilotos"]}
+    assert por_carro["377"]["melhor_volta_s"] == pytest.approx(84.842)
+    # 275 perdeu a melhor volta por punição (radar): sem volta oficial.
+    assert por_carro["275"]["melhor_volta_s"] is None and por_carro["275"]["posicao_oficial"] == 7
+    assert any("Carro 440" in a and "sem nenhuma volta" in a for a in d2["avisos_parsing"])

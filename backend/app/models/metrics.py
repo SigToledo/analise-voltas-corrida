@@ -187,6 +187,25 @@ class GrupoSessao(BaseModel):
     num_pilotos: int = 0
 
 
+class SessaoDisponivel(BaseModel):
+    """
+    Uma sessão encontrada nos PDFs enviados. O documento oficial compilado
+    traz mais de uma (ex.: Classificatório e Top Qualifying da Truck): o app
+    analisa uma por vez e o usuário troca pelo seletor da tela.
+    """
+
+    chave: str = Field(..., description="Identifica a sessão: o frontend a devolve no campo `sessao`.")
+    sessao: Optional[str] = Field(
+        None, description="Nome da sessão no PDF (com grupos juntados: '... - GRUPO 1 + GRUPO 2')."
+    )
+    data_hora: Optional[str] = Field(None, description="Início da sessão (do 1º grupo, se houver grupos).")
+    tipo_sessao: Optional[str] = Field(None, description="'treino', 'qualy' ou 'corrida', lido do PDF.")
+    num_pilotos: int = 0
+    arquivos: list[str] = Field(
+        default_factory=list, description="Laptimes da sessão (com as páginas, se vieram de um compilado)."
+    )
+
+
 class VoltaIdealEquipe(BaseModel):
     """
     A 'volta ideal' combinando os melhores setores de TODOS os pilotos.
@@ -279,6 +298,16 @@ class AnaliseSessao(BaseModel):
         description=(
             "Grupos juntados nesta análise, na ordem do horário. Vazio numa sessão única."
         ),
+    )
+    sessoes: list[SessaoDisponivel] = Field(
+        default_factory=list,
+        description=(
+            "Todas as sessões encontradas nos PDFs enviados, na ordem do horário — "
+            "normalmente uma só. Com mais de uma, a tela mostra o seletor de sessão."
+        ),
+    )
+    sessao_chave: Optional[str] = Field(
+        None, description="Chave da sessão analisada nesta resposta (uma das `sessoes`)."
     )
     avisos_parsing: list[str] = Field(
         default_factory=list,

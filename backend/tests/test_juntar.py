@@ -4,7 +4,9 @@ Grupo 2; classificatório dividido por classe).
 
 A junção em si é simples (concatenar pilotos); o que os testes cobrem de
 verdade é a RECUSA: nunca juntar sessões diferentes, dias diferentes, o mesmo
-arquivo duas vezes, corrida, ou um carro que aparece em dois grupos.
+arquivo duas vezes, corrida, ou um carro que aparece em dois grupos. E a
+SEPARAÇÃO: Laptimes de sessões diferentes enviados juntos viram sessões
+separadas, que o usuário escolhe na tela.
 Os casos reais usam os PDFs de Cascavel em samples/ (fora do Git).
 """
 
@@ -15,7 +17,15 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.lap_data import PilotoLaps, ResultadoParsingPDF, VoltaLeitura
-from app.parser.juntar import ErroJuncao, ParteSessao, juntar_partes, sigla_do_grupo, siglas_dos_grupos
+from app.parser.juntar import (
+    ErroJuncao,
+    ParteSessao,
+    chave_da_sessao,
+    juntar_partes,
+    separar_sessoes,
+    sigla_do_grupo,
+    siglas_dos_grupos,
+)
 from app.parser.laptimes_parser import parse_laptimes
 from app.parser.pdf_texto import LeitorPDF
 from app.parser.tipo_pdf import MetadadosSessao, TipoSessao, identificar
@@ -120,12 +130,19 @@ def test_recusa_corrida():
         juntar_partes([_parte(treino), _parte(corrida)])
 
 
-def _parte_sintetica(sessao: str, carros: list[str]) -> ParteSessao:
+def _parte_sintetica(
+    sessao: str,
+    carros: list[str],
+    hora: str | None = None,
+    dia: str = "11/09/2026",
+    etapa: str | None = None,
+    tipo: TipoSessao = TipoSessao.TREINO,
+) -> ParteSessao:
     volta = VoltaLeitura(numero_volta=1, eh_volta_pit=False, tempo_volta_s=80.0, setores_s=[20.0, 40.0, 20.0])
     pilotos = [PilotoLaps(numero_carro=c, nome=f"P{c}", voltas=[volta]) for c in carros]
+    hora = hora or ("08:45" if "GRUPO 1" in sessao else "09:10")
     meta = MetadadosSessao(
-        pista="Pista X", sessao=sessao, data_hora=f"11/09/2026 {'08:45' if 'GRUPO 1' in sessao else '09:10'}",
-        tipo_sessao=TipoSessao.TREINO,
+        etapa=etapa, pista="Pista X", sessao=sessao, data_hora=f"{dia} {hora}", tipo_sessao=tipo,
     )
     return ParteSessao(f"{sessao}.pdf", ResultadoParsingPDF(arquivo_origem="x", num_setores=3, pilotos=pilotos), meta)
 
@@ -142,6 +159,54 @@ def test_um_so_laptimes_nao_vira_grupo():
     resultado, meta, grupos = juntar_partes([a])
     assert grupos == [] and resultado.pilotos[0].grupo is None
     assert meta.sessao == "TREINO - GRUPO 1"
+
+
+def _nomes(sessoes: list[list[ParteSessao]]) -> list[list[str]]:
+    return [[p.metadados.sessao for p in s] for s in sessoes]
+
+
+def test_separa_grupos_da_mesma_sessao_numa_sessao_so():
+    g2 = _parte_sintetica("TREINO - GRUPO 2", ["9"])
+    g1 = _parte_sintetica("TREINO - GRUPO 1", ["7"])
+    assert _nomes(separar_sessoes([g2, g1])) == [["TREINO - GRUPO 1", "TREINO - GRUPO 2"]]
+
+
+def test_classificatorio_e_top_qualifying_sao_sessoes_diferentes():
+    """Nomes que diferem num trecho só, mas com os MESMOS carros: não são grupos."""
+    top = _parte_sintetica("TOP QUALIFYING - FT", ["377", "333"], hora="14:10", tipo=TipoSessao.QUALY)
+    classif = _parte_sintetica("CLASSIFICATORIO - FT", ["377", "333", "85"], hora="13:40", tipo=TipoSessao.QUALY)
+    sessoes = separar_sessoes([top, classif])
+    assert _nomes(sessoes) == [["CLASSIFICATORIO - FT"], ["TOP QUALIFYING - FT"]]  # ordem do horário
+    assert chave_da_sessao(sessoes[0]) == "CLASSIFICATORIO - FT | 11/09/2026 13:40"
+
+
+def test_categorias_diferentes_nunca_sao_grupos():
+    """1º treino do FT e do GT: nomes diferem só na categoria e nenhum carro repete —
+    a linha da etapa ('7ET - FT - BOMBA INJETORA' x '7ET - GT - ELETRONICO') separa."""
+    ft = _parte_sintetica("1º TREINO OFICIAL F TRUCK - FT", ["4"], hora="10:25", etapa="7ET - FT - BOMBA INJETORA")
+    gt = _parte_sintetica("1º TREINO OFICIAL F TRUCK - GT", ["10"], hora="11:00", etapa="7ET - GT - ELETRONICO")
+    assert len(separar_sessoes([ft, gt])) == 2
+    with pytest.raises(ErroJuncao, match="categorias diferentes"):
+        juntar_partes([ft, gt])
+
+
+def test_dias_diferentes_e_corrida_sao_sessoes_separadas():
+    sexta = _parte_sintetica("TREINO - GRUPO 1", ["7"], dia="11/09/2026")
+    sabado = _parte_sintetica("TREINO - GRUPO 2", ["9"], dia="12/09/2026")
+    corrida = _parte_sintetica("CORRIDA - GRUPO 2", ["8"], dia="11/09/2026", hora="16:00", tipo=TipoSessao.CORRIDA)
+    assert _nomes(separar_sessoes([sabado, corrida, sexta])) == [
+        ["TREINO - GRUPO 1"], ["CORRIDA - GRUPO 2"], ["TREINO - GRUPO 2"],
+    ]
+
+
+def test_o_mesmo_relatorio_duas_vezes_continua_recusado():
+    """Fica na MESMA sessão de propósito, para a junção recusar com mensagem clara."""
+    a = _parte_sintetica("TREINO - GRUPO 1", ["7"])
+    copia = _parte_sintetica("TREINO - GRUPO 1", ["7"])
+    sessoes = separar_sessoes([a, copia])
+    assert len(sessoes) == 1
+    with pytest.raises(ErroJuncao, match="mesmo relatório"):
+        juntar_partes(sessoes[0])
 
 
 def test_api_junta_grupos_e_casa_cada_resumo_com_o_seu():
@@ -184,14 +249,37 @@ def test_api_junta_grupos_e_casa_cada_resumo_com_o_seu():
     assert resp.status_code == 200 and resp.json()["modo"] == "qualy"
 
 
-def test_api_recusa_sessoes_diferentes_com_mensagem_clara():
-    a = _laptimes("SEXTA", "1º TREINO OFICIAL MBR", "GRUPO 1")
-    b = _laptimes("SEXTA", "2º TREINO OFICIAL MBR", "GRUPO 2")
-    _exige(a, b)
-    arquivos = [("arquivos", (c.name, c.read_bytes(), "application/pdf")) for c in (a, b)]
-    resp = client.post("/analise", files=arquivos)
-    assert resp.status_code == 422
-    assert "sessões diferentes" in resp.json()["detail"]
+def test_api_sessoes_diferentes_viram_o_seletor():
+    """1º treino G1 + 2º treino G2 (e o resumo de cada): antes era erro; agora são
+    duas sessões, a 1ª do dia é analisada e a outra fica no seletor."""
+    nomes = [
+        "5ET - MBR - 2º TREINO OFICIAL MBR - GRUPO 2 - Laptimes_sec4.pdf",
+        "5ET - MBR - 2º TREINO OFICIAL MBR - GRUPO 2 - QualifyReduced - RETIFICADO.pdf",
+        "5ET - MBR - 1º TREINO OFICIAL MBR - GRUPO 1 - Laptimes_sec4.pdf",
+        "5ET - MBR - 1º TREINO OFICIAL MBR - GRUPO 1 - QualifyReduced.pdf",
+    ]
+    _exige(*(MBR / "SEXTA" / n for n in nomes))
+    arquivos = [("arquivos", (n, (MBR / "SEXTA" / n).read_bytes(), "application/pdf")) for n in nomes]
+
+    d = client.post("/analise", files=arquivos).json()
+    assert [(s["sessao"], s["num_pilotos"]) for s in d["sessoes"]] == [
+        ("1º TREINO OFICIAL MBR - GRUPO 1", 25),
+        ("2º TREINO OFICIAL MBR - GRUPO 2", 19),
+    ]
+    assert d["sessao_chave"] == d["sessoes"][0]["chave"]
+    assert d["metadados"]["sessao"] == "1º TREINO OFICIAL MBR - GRUPO 1" and d["num_pilotos"] == 25
+    assert all(p["posicao_oficial"] for p in d["pilotos"])
+    # O resumo da outra sessão é dela: nenhum aviso de "resumo ignorado".
+    assert not any("ignorado" in a for a in d["avisos_parsing"])
+
+    outra = d["sessoes"][1]["chave"]
+    d2 = client.post("/analise", files=arquivos, data={"sessao": outra, "modo": "qualy"}).json()
+    assert d2["sessao_chave"] == outra and d2["modo"] == "qualy"
+    assert d2["metadados"]["sessao"] == "2º TREINO OFICIAL MBR - GRUPO 2" and d2["num_pilotos"] == 19
+    assert all(p["posicao_oficial"] for p in d2["pilotos"])
+
+    resp = client.post("/analise", files=arquivos, data={"sessao": "NÃO EXISTE | 01/01/2026 08:00"})
+    assert resp.status_code == 422 and "não está nos PDFs" in resp.json()["detail"]
 
 
 def test_api_ignora_resumo_de_outra_sessao_com_aviso():
