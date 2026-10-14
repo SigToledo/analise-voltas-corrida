@@ -175,6 +175,31 @@ def test_comparar_setores_referencia_tem_gap_zero(pilotos):
                 assert linha.gap_para_referencia_pct > 0
 
 
+def test_desclassificado_sai_da_volta_ideal_e_da_referencia(pilotos):
+    """
+    Carro DESCLASSIFICADO não serve de alvo: sai da volta ideal (com aviso de
+    quem ficou de fora) e não vira referência do setor — mas continua na
+    comparação, com o tempo dele.
+    """
+    com_todos = calcular_volta_ideal_equipe(pilotos, 3, True)
+    dono_s1 = com_todos.setores[0].numero_carro_dono
+    nome = next(p.nome for p in pilotos if p.numero_carro == dono_s1)
+
+    sem_ele = calcular_volta_ideal_equipe(pilotos, 3, True, fora=frozenset({dono_s1}))
+    assert all(s.numero_carro_dono != dono_s1 for s in sem_ele.setores)
+    assert sem_ele.setores[0].tempo_s > com_todos.setores[0].tempo_s
+    assert sem_ele.total_s > com_todos.total_s
+    assert f"Sem os desclassificados no resultado oficial: ({dono_s1}) {nome}." in sem_ele.avisos
+    # Desclassificado que não está entre os pilotos: nada muda, nenhum aviso.
+    assert calcular_volta_ideal_equipe(pilotos, 3, True, fora=frozenset({"999"})) == com_todos
+
+    s1 = comparar_setores(pilotos, 3, True, fora=frozenset({dono_s1}))[0]
+    assert s1.referencia_numero_carro != dono_s1
+    linha = next(x for x in s1.pilotos if x.numero_carro == dono_s1)
+    assert linha.gap_para_referencia_s < 0          # mais rápido que a referência
+    assert any("desclassificado" in a for a in s1.avisos)
+
+
 def test_aviso_de_voltas_desconsideradas_traz_os_tempos():
     """A volta 3 (1:15.000) é mais rápida que a oficial em negrito (1:16.500):
     a cronometragem a cancelou. O aviso diz qual volta, o tempo dela e o

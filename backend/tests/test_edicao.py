@@ -1,8 +1,9 @@
 """
 Testes de QUAL resumo oficial vale quando chegam vários da mesma sessão
-(original e retificação; plano e BY CLASS) — app/parser/edicao.py — e da hora
-de impressão que decide isso. Os casos reais usam PDFs de samples/ (fora do
-Git; pulados se ausentes).
+(original e retificação; plano e BY CLASS) — app/parser/edicao.py —, da hora
+de impressão que decide isso e do que o resumo escolhido faz com os
+DESCLASSIFICADOS (status DQ na tela, fora da volta ideal). Os casos reais
+usam PDFs de samples/ (fora do Git; pulados se ausentes).
 """
 
 from datetime import datetime
@@ -19,6 +20,7 @@ from app.parser.tipo_pdf import desmontar
 
 SAMPLES = Path(__file__).resolve().parents[2] / "samples"
 TARUMA = SAMPLES / "8ET - FT - TARUMA"
+CORRIDA_2_MBR = SAMPLES / "5ET - MBR - CASCAVEL" / "DOMINGO"
 ORIGINAL = TARUMA / "RESULTADO - CLASSIFICATORIO (FT BOMBA INJETORA).pdf"
 RETIFICACAO = TARUMA / "RESULTADO - CLASSIFICATORIO (FT BOMBA INJETORA) - RETIFICACAO.pdf"
 
@@ -125,3 +127,49 @@ def test_api_usa_a_retificacao_de_taruma_em_qualquer_ordem():
         assert posicao["550"] is None and posicao["16"] is None
         assert [posicao[c] for c in ("88", "5", "96", "79")] == [12, 13, 14, 15]
         assert f"Resumo usado: '{RETIFICACAO.name} (pág. 1)' (impresso 10/10 às 17:27:10, a edição mais recente)." in d["avisos_parsing"]
+
+
+def _analisar(*pdfs: Path) -> dict:
+    arquivos = [("arquivos", (p.name, p.read_bytes(), "application/pdf")) for p in pdfs]
+    resp = client.post("/analise", files=arquivos)
+    assert resp.status_code == 200, resp.json()
+    return resp.json()
+
+
+@pytest.mark.skipif(not RETIFICACAO.exists(), reason="PDFs de Tarumã ausentes")
+def test_desclassificados_de_taruma_tem_status_e_ficam_fora_da_volta_ideal():
+    d = _analisar(ORIGINAL, RETIFICACAO)
+    status = {p["numero_carro"]: p["status_oficial"] for p in d["pilotos"]}
+    assert {c for c, s in status.items() if s} == {"550", "16"}
+    assert status["550"] == status["16"] == "DQ"
+
+    sem = "Sem os desclassificados no resultado oficial: (550) P.GIACOMELLI, (16) G.RAMPON."
+    assert sem in d["volta_ideal_equipe"]["avisos"]
+    assert sem in d["voltas_ideais_por_classe"]["FT"]["avisos"]
+    donos = {s["numero_carro_dono"] for s in d["volta_ideal_equipe"]["setores"]}
+    assert donos.isdisjoint({"550", "16"})
+    # Os tempos deles continuam os do PDF.
+    tempos = {p["numero_carro"]: p["melhor_volta_s"] for p in d["pilotos"]}
+    assert tempos["550"] == pytest.approx(89.997) and tempos["16"] == pytest.approx(95.220)
+
+    # Só o original (antes da retificação): ninguém desclassificado.
+    d0 = _analisar(ORIGINAL)
+    assert all(p["status_oficial"] is None for p in d0["pilotos"])
+    assert d0["volta_ideal_equipe"]["avisos"] == []
+
+
+@pytest.mark.skipif(not CORRIDA_2_MBR.exists(), reason="PDFs de Cascavel ausentes")
+def test_corrida_com_desclassificados_em_cascavel():
+    """Corrida 2 da MBR: o #3 (SUPER) e o #55 (MASTER) foram desclassificados."""
+    d = _analisar(
+        CORRIDA_2_MBR / "5ET - MBR - CORRIDA 2 - MBR - Laptimes_sec4.pdf",
+        CORRIDA_2_MBR / "5ET - MBR - CORRIDA 2 - MBR - RaceFull.pdf",
+    )
+    dq = {p["numero_carro"] for p in d["pilotos"] if p["status_oficial"] == "DQ"}
+    assert dq == {"3", "55"}
+    assert {s["numero_carro_dono"] for s in d["volta_ideal_equipe"]["setores"]}.isdisjoint(dq)
+    assert d["voltas_ideais_por_classe"]["SUPER"]["avisos"] == [
+        "Sem os desclassificados no resultado oficial: (3) E.Pavelski."
+    ]
+    # O RaceFull repete "DQ" na coluna Diff: é o status, não leitura ruim.
+    assert not any("ilegível ('DQ')" in a for a in d["avisos_parsing"])

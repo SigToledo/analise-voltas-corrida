@@ -50,6 +50,14 @@ class MetricasPiloto(BaseModel):
             "posição DENTRO do grupo (cada grupo tem o seu resumo)."
         ),
     )
+    status_oficial: Optional[str] = Field(
+        None,
+        description=(
+            "Status no resumo oficial no lugar da posição, como está no PDF (ex.: 'DQ' = "
+            "desclassificado). Os tempos do carro continuam os do PDF; o desclassificado "
+            "só sai das referências (volta ideal e o mais rápido de cada setor)."
+        ),
+    )
     grupo: Optional[str] = Field(
         None, description="Grupo da sessão (ex.: 'G1'), quando vários grupos foram juntados."
     )

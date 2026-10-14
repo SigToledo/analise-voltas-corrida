@@ -31,7 +31,12 @@ import tempfile
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.metrics.calculations import calcular_voltas_ideais_por_classe, montar_analise_sessao
+from app.metrics.calculations import (
+    STATUS_DESCLASSIFICADO,
+    calcular_voltas_ideais_por_classe,
+    montar_analise_sessao,
+)
+from app.models.lap_data import ResultadoParsingPDF
 from app.models.metrics import AnaliseSessao, GrupoSessao, MetricasPiloto, SessaoDisponivel
 from app.parser.edicao import escolher_resumo
 from app.parser.juntar import ErroJuncao, ParteSessao, chave_da_sessao, juntar_partes, separar_sessoes
@@ -40,7 +45,7 @@ from app.parser.pdf_texto import LeitorPDF, TrechoPDF
 from app.parser.resumo_parser import ResumoOficial, parse_resumo
 from app.parser.tipo_pdf import NOMES_RELATORIO, Identificacao, TipoRelatorio, TipoSessao, desmontar
 
-app = FastAPI(title="Análise de Voltas — API", version="0.6.0")
+app = FastAPI(title="Análise de Voltas — API", version="0.7.0")
 
 # Libera o frontend (Vite/Tauri em dev) a chamar a API do navegador.
 app.add_middleware(
@@ -194,19 +199,27 @@ async def analisar(
 
         detectado = metadados.tipo_sessao
         modo_final = (detectado or TipoSessao.TREINO) if modo == "auto" else TipoSessao(modo)
-        analise = montar_analise_sessao(resultado, modo_final, detectado)
+        # O resumo oficial é escolhido ANTES dos cálculos: quem ele
+        # desclassifica (DQ) sai da volta ideal e das referências de setor.
+        escolhidos, avisos_resumos = _escolher_resumos(sessoes[escolhida], grupos, resumos, outras_sessoes)
+        desclassificados = _desclassificados(resultado, escolhidos)
+        analise = montar_analise_sessao(resultado, modo_final, detectado, desclassificados)
         analise.metadados = metadados.como_dict()
         analise.grupos = grupos
         analise.sessoes = disponiveis
         analise.sessao_chave = disponiveis[escolhida].chave
         analise.avisos_parsing.extend(f"Arquivo ignorado — {i}." for i in ignorados)
-        _aplicar_resumos(analise, sessoes[escolhida], grupos, resumos, outras_sessoes)
+        analise.avisos_parsing.extend(avisos_resumos)
+        for grupo, r in escolhidos:
+            alvo = [p for p in analise.pilotos if p.grupo == grupo]
+            _mesclar_resumo(analise, alvo, r, prefixo=f"{grupo}: " if grupo else "")
         # A classe de cada carro só é conhecida depois do resumo: agora dá
         # para montar a volta ideal de cada classe.
         analise.voltas_ideais_por_classe = calcular_voltas_ideais_por_classe(
             resultado.pilotos,
             {p.numero_carro: p.classe for p in analise.pilotos if p.classe},
             resultado.num_setores,
+            desclassificados,
         )
         return analise
     finally:
@@ -217,22 +230,22 @@ async def analisar(
                 pass
 
 
-def _aplicar_resumos(
-    analise: AnaliseSessao,
+def _escolher_resumos(
     laptimes: list[ParteSessao],
     grupos: list[GrupoSessao],
     resumos: list[tuple[str, Identificacao, ResumoOficial]],
     outras_sessoes: set[tuple],
-) -> None:
+) -> tuple[list[tuple[str | None, ResumoOficial]], list[str]]:
     """
-    Casa cada resumo com o SEU Laptimes pela sessão e horário (conferido nos
-    36 pares de Cascavel e Cuiabá: sempre idênticos) e aplica só aos pilotos
-    daquele grupo. Resumo de outra sessão é ignorado com aviso — aplicar
-    classes e posições de outra sessão seria inventar dado. Se essa outra
-    sessão também foi enviada (`outras_sessoes`, ex.: o Top Qualifying no
-    documento compilado), o resumo é dela e vale quando ela for a escolhida:
-    sem aviso.
+    O resumo que vale para cada grupo da sessão (None = sessão sem grupos), e
+    os avisos. Casa cada resumo com o SEU Laptimes pela sessão e horário
+    (conferido nos 36 pares de Cascavel e Cuiabá: sempre idênticos). Resumo
+    de outra sessão é ignorado com aviso — aplicar classes e posições de outra
+    sessão seria inventar dado. Se essa outra sessão também foi enviada
+    (`outras_sessoes`, ex.: o Top Qualifying no documento compilado), o resumo
+    é dela e vale quando ela for a escolhida: sem aviso.
     """
+    avisos: list[str] = []
     grupo_da_sessao: dict[tuple, str | None] = {
         (p.metadados.sessao, p.metadados.data_hora): None for p in laptimes
     }
@@ -245,7 +258,7 @@ def _aplicar_resumos(
         if chave in outras_sessoes:
             continue
         if chave not in grupo_da_sessao:
-            analise.avisos_parsing.append(
+            avisos.append(
                 f"Resumo '{nome}' ignorado: é da sessão '{ident.metadados.sessao}' "
                 f"({ident.metadados.data_hora}), que não está entre os Laptimes enviados."
             )
@@ -254,13 +267,24 @@ def _aplicar_resumos(
 
     # Mais de um resumo da mesma sessão (original e retificação; plano e BY
     # CLASS): vale a edição mais recente — ver app/parser/edicao.py.
+    escolhidos: list[tuple[str | None, ResumoOficial]] = []
     for chave, lista in candidatos.items():
         grupo = grupo_da_sessao[chave]
-        prefixo = f"{grupo}: " if grupo else ""
-        (_, r), avisos = escolher_resumo(lista)
-        analise.avisos_parsing.extend(prefixo + a for a in avisos)
-        alvo = [p for p in analise.pilotos if p.grupo == grupo]
-        _mesclar_resumo(analise, alvo, r, prefixo=prefixo)
+        (_, r), avisos_edicao = escolher_resumo(lista)
+        avisos.extend((f"{grupo}: " if grupo else "") + a for a in avisos_edicao)
+        escolhidos.append((grupo, r))
+    return escolhidos, avisos
+
+
+def _desclassificados(
+    resultado: ResultadoParsingPDF, escolhidos: list[tuple[str | None, ResumoOficial]]
+) -> frozenset[str]:
+    """Carros que o resumo oficial do SEU grupo dá como desclassificados (DQ)."""
+    fora = set()
+    for grupo, r in escolhidos:
+        do_grupo = {p.numero_carro for p in resultado.pilotos if p.grupo == grupo}
+        fora |= {p.numero_carro for p in r.pilotos if p.status in STATUS_DESCLASSIFICADO} & do_grupo
+    return frozenset(fora)
 
 
 def _mesclar_resumo(
@@ -282,6 +306,7 @@ def _mesclar_resumo(
             continue
         if oficial.classe:
             piloto.classe = oficial.classe
+        piloto.status_oficial = oficial.status
         # No BY CLASS a posição reinicia por classe: só vale como posição no
         # resumo plano.
         if not r.agrupado_por_classe:
