@@ -33,6 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.metrics.calculations import calcular_voltas_ideais_por_classe, montar_analise_sessao
 from app.models.metrics import AnaliseSessao, GrupoSessao, MetricasPiloto, SessaoDisponivel
+from app.parser.edicao import escolher_resumo
 from app.parser.juntar import ErroJuncao, ParteSessao, chave_da_sessao, juntar_partes, separar_sessoes
 from app.parser.laptimes_parser import parse_laptimes
 from app.parser.pdf_texto import LeitorPDF, TrechoPDF
@@ -216,12 +217,6 @@ async def analisar(
                 pass
 
 
-def _prioridade(nome: str, r: ResumoOficial) -> tuple:
-    """Resumo preferido de uma sessão: o geral (não BY CLASS) e o retificado mais novo."""
-    retificado = 2 if "RETIFICADO 2" in nome.upper() else 1 if "RETIFICADO" in nome.upper() else 0
-    return (not r.agrupado_por_classe, retificado)
-
-
 def _aplicar_resumos(
     analise: AnaliseSessao,
     laptimes: list[ParteSessao],
@@ -244,7 +239,7 @@ def _aplicar_resumos(
     for g in grupos:
         grupo_da_sessao[(g.sessao, g.data_hora)] = g.sigla
 
-    escolhidos: dict[tuple, tuple[str, ResumoOficial]] = {}
+    candidatos: dict[tuple, list[tuple[str, ResumoOficial]]] = {}
     for nome, ident, r in resumos:
         chave = (ident.metadados.sessao, ident.metadados.data_hora)
         if chave in outras_sessoes:
@@ -255,19 +250,17 @@ def _aplicar_resumos(
                 f"({ident.metadados.data_hora}), que não está entre os Laptimes enviados."
             )
             continue
-        atual = escolhidos.get(chave)
-        if atual is None:
-            escolhidos[chave] = (nome, r)
-        elif _prioridade(nome, r) > _prioridade(*atual):
-            analise.avisos_parsing.append(f"Resumo '{atual[0]}' não usado: '{nome}' é da mesma sessão.")
-            escolhidos[chave] = (nome, r)
-        else:
-            analise.avisos_parsing.append(f"Resumo '{nome}' não usado: '{atual[0]}' é da mesma sessão.")
+        candidatos.setdefault(chave, []).append((nome, r))
 
-    for chave, (_, r) in escolhidos.items():
+    # Mais de um resumo da mesma sessão (original e retificação; plano e BY
+    # CLASS): vale a edição mais recente — ver app/parser/edicao.py.
+    for chave, lista in candidatos.items():
         grupo = grupo_da_sessao[chave]
+        prefixo = f"{grupo}: " if grupo else ""
+        (_, r), avisos = escolher_resumo(lista)
+        analise.avisos_parsing.extend(prefixo + a for a in avisos)
         alvo = [p for p in analise.pilotos if p.grupo == grupo]
-        _mesclar_resumo(analise, alvo, r, prefixo=f"{grupo}: " if grupo else "")
+        _mesclar_resumo(analise, alvo, r, prefixo=prefixo)
 
 
 def _mesclar_resumo(

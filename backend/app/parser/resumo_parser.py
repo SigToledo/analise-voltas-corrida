@@ -15,13 +15,14 @@ aviso — nunca "consertado".
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
 from app.parser.cabecalho import distribuir_linha
 from app.parser.conversao import inteiro, tempo_em_segundos, voltas_atras
-from app.parser.pdf_texto import FontePaginas, LeitorPDF, agrupar_linhas
+from app.parser.pdf_texto import FontePaginas, LeitorPDF, agrupar_linhas, hora_de_impressao
 from app.parser.tipo_pdf import (
     SECOES_FIM_DA_TABELA,
     SECOES_NAO_CLASSE,
@@ -61,6 +62,13 @@ class ResumoOficial(BaseModel):
     tipo: str = Field(..., description="'resumo' (QualifyReduced) ou 'resultado_corrida' (RaceFull).")
     agrupado_por_classe: bool = False
     metadados: Optional[dict] = None
+    impresso_em: Optional[datetime] = Field(
+        None,
+        description=(
+            "Quando o cronômetro imprimiu (rodapé 'Printed:'). Diz qual edição é a mais "
+            "recente quando há original e retificação."
+        ),
+    )
     pilotos: list[PilotoResumo] = Field(default_factory=list)
     avisos: list[str] = Field(default_factory=list)
 
@@ -168,6 +176,7 @@ def parse_resumo(leitor: FontePaginas, ident: Identificacao, nome_arquivo: str |
         tipo=ident.tipo.value,
         agrupado_por_classe=ident.agrupado_por_classe,
         metadados=ident.metadados.como_dict(),
+        impresso_em=hora_de_impressao(leitor),
         pilotos=pilotos,
         avisos=avisos,
     )

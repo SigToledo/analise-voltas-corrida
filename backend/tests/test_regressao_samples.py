@@ -95,7 +95,8 @@ def test_cada_arquivo_vira_os_seus_relatorios(pdf: Path):
     - relatório avulso do cronômetro vira UM relatório, com a mesma
       identificação de sempre (pela 1ª página) — nada muda para eles;
     - documento compilado: cada Laptimes dentro dele bate com o resumo da
-      MESMA sessão que vem no próprio arquivo.
+      MESMA sessão que vem no próprio arquivo. (A RETIFICAÇÃO de Tarumã é um
+      compilado só com resumo e consolidado: aí basta o resumo ser lido.)
     """
     with LeitorPDF(str(pdf)) as leitor:
         relatorios = desmontar(leitor)
@@ -116,6 +117,7 @@ def test_cada_arquivo_vira_os_seus_relatorios(pdf: Path):
     conferidas = 0
     for chave, partes in por_sessao.items():
         if "laptimes" not in partes:
+            assert partes["resumo"].pilotos and partes["resumo"].avisos == [], chave
             continue
         resultado = partes["laptimes"]
         assert resultado.pilotos and resultado.avisos == [], (chave, resultado.avisos[:5])
@@ -124,7 +126,8 @@ def test_cada_arquivo_vira_os_seus_relatorios(pdf: Path):
             erros = _divergencias(resultado, partes["resumo"])
             assert not erros, (chave, erros)
             conferidas += 1
-    assert conferidas, "documento compilado sem nenhum par Laptimes + resumo"
+    if any("laptimes" in partes for partes in por_sessao.values()):
+        assert conferidas, "documento compilado sem nenhum par Laptimes + resumo"
 
 
 @pytest.mark.parametrize("relatorio", _parametros("RaceFull") + _parametros("QualifyReduced"))
