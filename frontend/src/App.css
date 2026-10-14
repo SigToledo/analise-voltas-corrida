@@ -297,6 +297,20 @@
   color: var(--giz-fraco);
   font-size: 0.8em;
 }
+/* Status oficial (DQ = desclassificado): vermelho e cheio, para não passar
+   despercebido no meio dos chips. */
+.status-oficial {
+  font-family: var(--tipo-display);
+  font-weight: 700;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  color: var(--pista);
+  background: var(--vermelho);
+  border-radius: 2px;
+  padding: 0.05em 0.4em;
+  margin-right: 0.4rem;
+  cursor: help;
+}
 
 /* Filtro Todos | G1 | G2, no mesmo desenho do seletor de modo. */
 .filtro-grupo {

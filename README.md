@@ -33,6 +33,10 @@ garagem: do PDF da sessão ao "onde ganhar tempo" em poucos cliques.
   gaps por setor (em segundos e %), destacando onde está a maior oportunidade.
 - **Usa o resumo oficial** (QualifyReduced ou RaceFull), quando enviado, para
   trazer a classe e a posição de cada carro e conferir a melhor volta.
+  Com o original e a **retificação** juntos, vale a edição mais recente, pela
+  hora de impressão do rodapé — não pelo nome do arquivo. Carro
+  **desclassificado (DQ)** ganha a etiqueta, vai para o fim da lista e sai da
+  volta ideal (os tempos dele continuam os do PDF).
 - **Junta os grupos da mesma sessão** (ex.: treinos da MBR em Grupo 1 e Grupo
   2; classificatório dividido por classe): basta mandar todos os PDFs juntos,
   em qualquer ordem. Cada piloto ganha a etiqueta do grupo, há um filtro por
