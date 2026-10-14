@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { BarraFiltros } from '../components/Filtros'
 import { RitmoPorTrecho } from '../components/RitmoPorTrecho'
+import { StatusOficial } from '../components/StatusOficial'
 import { TooltipVolta } from '../components/TooltipVolta'
 import { corDoPiloto } from '../cores'
 import { LIMITE_JANELA, marcasEixo, passoMarcadores } from '../escala'
@@ -211,11 +212,13 @@ export function ComparacaoScreen({
             >
               <span className="nome">
                 {sel && <i className="ponto" style={{ background: cor }} />}
-                {mostrarPosicao && (
+                {mostrarPosicao && !p.status_oficial && (
                   <span className="posicao num">
                     {p.posicao_oficial !== null ? `P${p.posicao_oficial}` : 'NC'}
                   </span>
                 )}
+                {/* Status oficial (DQ = desclassificado): em qualquer modo. */}
+                {p.status_oficial && <StatusOficial status={p.status_oficial} />}
                 ({p.numero_carro}) {p.nome}
                 {p.classe && <span className="classe">{p.classe}</span>}
                 {temGrupos && p.grupo && <span className="grupo">{p.grupo}</span>}
@@ -233,8 +236,9 @@ export function ComparacaoScreen({
             const p = analise.pilotos.find((x) => x.numero_carro === carro)
             return (
               <span key={carro}>
-                <i style={{ background: corDoPiloto(selecionados, carro) }} />(
-                {carro}) {p?.nome}
+                <i style={{ background: corDoPiloto(selecionados, carro) }} />
+                {p?.status_oficial && <StatusOficial status={p.status_oficial} />}({carro}){' '}
+                {p?.nome}
                 {temGrupos && p?.grupo && <small className="grupo-legenda"> {p.grupo}</small>}
               </span>
             )

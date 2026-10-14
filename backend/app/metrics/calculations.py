@@ -249,11 +249,31 @@ def calcular_metricas_piloto(
     )
 
 
+# Status do resumo oficial que quer dizer DESCLASSIFICADO. Nos PDFs de
+# Cascavel e Tarumã só aparece "DQ"; "DSQ" é a outra sigla do cronômetro para
+# o mesmo.
+STATUS_DESCLASSIFICADO = frozenset({"DQ", "DSQ"})
+
+
+def _aviso_desclassificados(pilotos: list[PilotoLaps], fora: frozenset[str]) -> str | None:
+    quem = [f"({p.numero_carro}) {p.nome}" for p in pilotos if p.numero_carro in fora]
+    return f"Sem os desclassificados no resultado oficial: {', '.join(quem)}." if quem else None
+
+
 def calcular_volta_ideal_equipe(
-    pilotos: list[PilotoLaps], num_setores: int, usa_destaque: bool
+    pilotos: list[PilotoLaps], num_setores: int, usa_destaque: bool,
+    fora: frozenset[str] = frozenset(),
 ) -> VoltaIdealEquipe:
-    """Combina o melhor tempo de cada setor entre TODOS os pilotos (e de quem é)."""
+    """
+    Combina o melhor tempo de cada setor entre TODOS os pilotos (e de quem é).
+    `fora`: carros DESCLASSIFICADOS no resultado oficial — não servem de alvo
+    (ex.: o #16 de Tarumã, com turbina não permitida), então não entram; um
+    aviso diz quem ficou de fora.
+    """
     avisos: list[str] = []
+    if aviso := _aviso_desclassificados(pilotos, fora):
+        avisos.append(aviso)
+        pilotos = [p for p in pilotos if p.numero_carro not in fora]
     donos: list[DonoDoSetor] = []
     descons = {p.numero_carro: _desconsideradas(p, usa_destaque) for p in pilotos}
 
@@ -282,7 +302,8 @@ def calcular_volta_ideal_equipe(
 
 
 def calcular_voltas_ideais_por_classe(
-    pilotos: list[PilotoLaps], classes: dict[str, str], num_setores: int
+    pilotos: list[PilotoLaps], classes: dict[str, str], num_setores: int,
+    fora: frozenset[str] = frozenset(),
 ) -> dict[str, VoltaIdealEquipe]:
     """
     A volta ideal de cada CLASSE (ELITE, MASTER, SUPER…): a mesma regra da
@@ -297,17 +318,19 @@ def calcular_voltas_ideais_por_classe(
         if classe := classes.get(p.numero_carro):
             por_classe.setdefault(classe, []).append(p)
     return {
-        classe: calcular_volta_ideal_equipe(ps, num_setores, destaque)
+        classe: calcular_volta_ideal_equipe(ps, num_setores, destaque, fora)
         for classe, ps in sorted(por_classe.items())
     }
 
 
 def comparar_setores(
-    pilotos: list[PilotoLaps], num_setores: int, usa_destaque: bool
+    pilotos: list[PilotoLaps], num_setores: int, usa_destaque: bool,
+    fora: frozenset[str] = frozenset(),
 ) -> list[ComparacaoSetor]:
     """
     Para cada setor, compara o melhor tempo de cada piloto. O mais rápido vira a
     referência (gap 0); os demais recebem o gap em segundos e em % da referência.
+    Desclassificado (`fora`) continua na comparação, mas não vira referência.
     """
     comparacoes: list[ComparacaoSetor] = []
     descons = {p.numero_carro: _desconsideradas(p, usa_destaque) for p in pilotos}
@@ -317,12 +340,19 @@ def comparar_setores(
         melhores = {p.numero_carro: _melhor_setor(p, i, descons[p.numero_carro]) for p in pilotos}
         validos = [(t, p) for p in pilotos if (t := melhores[p.numero_carro]) is not None]
         avisos: list[str] = []
-        if not validos:
-            avisos.append(f"Setor {setor}: nenhum dos pilotos tem leitura válida.")
+        referencias = [(t, p) for t, p in validos if p.numero_carro not in fora]
+        if not referencias:
+            avisos.append(f"Setor {setor}: nenhum dos pilotos classificados tem leitura válida.")
             comparacoes.append(ComparacaoSetor(setor=setor, avisos=avisos))
             continue
 
-        ref_tempo, ref_piloto = min(validos, key=lambda item: item[0])
+        ref_tempo, ref_piloto = min(referencias, key=lambda item: item[0])
+        mais_rapido = min(validos, key=lambda item: item[0])[1]
+        if mais_rapido.numero_carro in fora:
+            avisos.append(
+                f"Setor {setor}: o mais rápido foi ({mais_rapido.numero_carro}) {mais_rapido.nome}, "
+                "desclassificado — a referência é o mais rápido entre os classificados."
+            )
         linhas: list[GapSetorPiloto] = []
         for piloto in pilotos:
             tempo = melhores[piloto.numero_carro]
@@ -351,6 +381,7 @@ def montar_analise_sessao(
     resultado: ResultadoParsingPDF,
     modo: TipoSessao = TipoSessao.TREINO,
     modo_detectado: Optional[TipoSessao] = None,
+    fora_das_referencias: frozenset[str] = frozenset(),
 ) -> AnaliseSessao:
     """
     Junta tudo numa única resposta para o frontend: métricas de cada piloto,
@@ -360,6 +391,9 @@ def montar_analise_sessao(
     `modo` decide as regras (ver tipos_volta.py): na corrida, volta 1 é
     largada e os Safety Cars são detectados; no treino/qualy, os trechos são
     as saídas do box. Primeiro classificamos as voltas, depois calculamos.
+
+    `fora_das_referencias`: carros desclassificados no resultado oficial —
+    saem da volta ideal e da referência de cada setor (o resto não muda).
     """
     pilotos = resultado.pilotos
     n = resultado.num_setores
@@ -374,8 +408,8 @@ def montar_analise_sessao(
         modo_detectado=modo_detectado.value if modo_detectado else None,
         neutralizacoes=neutralizacoes,
         pilotos=[calcular_metricas_piloto(p, n, destaque) for p in pilotos],
-        volta_ideal_equipe=calcular_volta_ideal_equipe(pilotos, n, destaque),
-        comparacao_setores=comparar_setores(pilotos, n, destaque),
+        volta_ideal_equipe=calcular_volta_ideal_equipe(pilotos, n, destaque, fora_das_referencias),
+        comparacao_setores=comparar_setores(pilotos, n, destaque, fora_das_referencias),
         voltas_por_carro={p.numero_carro: p.voltas for p in pilotos},
         avisos_parsing=resultado.avisos,
     )

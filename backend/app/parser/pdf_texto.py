@@ -10,7 +10,9 @@ pontos (1 pt = 1/72 de polegada).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from datetime import datetime
 from functools import cached_property
 
 import pdfplumber
@@ -220,3 +222,35 @@ class TrechoPDF:
 
 # O que os parsers aceitam: o PDF inteiro ou um trecho dele.
 FontePaginas = LeitorPDF | TrechoPDF
+
+
+_RE_DATA_IMPRESSAO = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+_RE_HORA_IMPRESSAO = re.compile(r"^\d{1,2}:\d{2}:\d{2}$")
+
+
+def hora_de_impressao(fonte: FontePaginas) -> datetime | None:
+    """
+    Quando o cronômetro imprimiu o relatório: o rodapé de toda página traz
+    "Printed: 11/09/2026 14:37:15". Uma RETIFICAÇÃO é impressa depois do
+    original (conferido nos 8 pares de Cascavel e Tarumã), então é isso que
+    diz qual edição de um resumo é a mais recente — mesmo com o arquivo
+    renomeado.
+
+    No documento assinado pelos comissários, o carimbo "ASSINADO
+    DIGITALMENTE POR:" cai por cima e se mistura às palavras da linha
+    ("Printed: 10/10/2026 POR: 14:36:12"); por isso procuramos a data e a hora
+    entre as palavras DEPOIS de "Printed:", pelo formato. Sem rodapé
+    legível, None (nunca uma hora estimada).
+    """
+    horas: list[datetime] = []
+    for n in range(fonte.num_paginas):
+        for linha in agrupar_linhas(fonte.palavras(n, com_rodape=True)):
+            textos = [p.texto for p in linha]
+            if "Printed:" not in textos:
+                continue
+            depois = textos[textos.index("Printed:") + 1 :]
+            data = next((t for t in depois if _RE_DATA_IMPRESSAO.match(t)), None)
+            hora = next((t for t in depois if _RE_HORA_IMPRESSAO.match(t)), None)
+            if data and hora:
+                horas.append(datetime.strptime(f"{data} {hora}", "%d/%m/%Y %H:%M:%S"))
+    return max(horas) if horas else None

@@ -74,6 +74,11 @@ export interface MetricasPiloto {
   classe: string | null
   /** Posição no resumo oficial; com grupos juntados, DENTRO do grupo. */
   posicao_oficial: number | null
+  /**
+   * Status no resumo oficial no lugar da posição, como está no PDF ('DQ' =
+   * desclassificado). Os tempos continuam os do PDF.
+   */
+  status_oficial: string | null
   /** Grupo da sessão ('G1', 'G2', 'SUPER'…) quando vários grupos foram juntados. */
   grupo: string | null
   melhor_volta_s: number | null

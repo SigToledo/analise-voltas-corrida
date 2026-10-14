@@ -15,13 +15,14 @@ aviso — nunca "consertado".
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
 from app.parser.cabecalho import distribuir_linha
 from app.parser.conversao import inteiro, tempo_em_segundos, voltas_atras
-from app.parser.pdf_texto import FontePaginas, LeitorPDF, agrupar_linhas
+from app.parser.pdf_texto import FontePaginas, LeitorPDF, agrupar_linhas, hora_de_impressao
 from app.parser.tipo_pdf import (
     SECOES_FIM_DA_TABELA,
     SECOES_NAO_CLASSE,
@@ -61,6 +62,13 @@ class ResumoOficial(BaseModel):
     tipo: str = Field(..., description="'resumo' (QualifyReduced) ou 'resultado_corrida' (RaceFull).")
     agrupado_por_classe: bool = False
     metadados: Optional[dict] = None
+    impresso_em: Optional[datetime] = Field(
+        None,
+        description=(
+            "Quando o cronômetro imprimiu (rodapé 'Printed:'). Diz qual edição é a mais "
+            "recente quando há original e retificação."
+        ),
+    )
     pilotos: list[PilotoResumo] = Field(default_factory=list)
     avisos: list[str] = Field(default_factory=list)
 
@@ -76,10 +84,14 @@ def _converter(valores: dict[str, str], titulo: str, conversor, ref: str, avisos
     return valor
 
 
-def _diferenca(valores: dict[str, str], titulo: str, ref: str, avisos: list[str]):
-    """'0.879' → (0.879, None) ; '1 Lap' → (None, 1)."""
+def _diferenca(valores: dict[str, str], titulo: str, ref: str, avisos: list[str], status: str | None):
+    """
+    '0.879' → (0.879, None) ; '1 Lap' → (None, 1). O carro com STATUS (ex.:
+    desclassificado) às vezes repete o status na coluna ("DQ" no Diff do
+    RaceFull): não é diferença, mas também não é leitura ruim — sem aviso.
+    """
     texto = valores.get(titulo)
-    if texto is None:
+    if texto is None or (status is not None and texto == status):
         return None, None
     em_voltas = voltas_atras(texto)
     if em_voltas is not None:
@@ -125,14 +137,15 @@ def parse_resumo(leitor: FontePaginas, ident: Identificacao, nome_arquivo: str |
                 avisos.append(f"{ref}: valores sem coluna {d.sem_coluna} — ignorados.")
 
             pos_txt = d.valores.get("Pos")
-            diff_s, diff_voltas = _diferenca(d.valores, "Diff", ref, avisos)
-            gap_s, _ = _diferenca(d.valores, "Gap", ref, avisos)
+            status = pos_txt if pos_txt is not None and inteiro(pos_txt) is None else None
+            diff_s, diff_voltas = _diferenca(d.valores, "Diff", ref, avisos, status)
+            gap_s, _ = _diferenca(d.valores, "Gap", ref, avisos, status)
             titulo_na = next((t for t in _TITULOS_VOLTA_DA_MELHOR if t in d.valores), None)
 
             pilotos.append(
                 PilotoResumo(
                     posicao=inteiro(pos_txt),
-                    status=pos_txt if pos_txt is not None and inteiro(pos_txt) is None else None,
+                    status=status,
                     numero_carro=carro,
                     nome=nome,
                     classe=d.valores.get("Class") or d.valores.get("Classe") or classe_secao,
@@ -168,6 +181,7 @@ def parse_resumo(leitor: FontePaginas, ident: Identificacao, nome_arquivo: str |
         tipo=ident.tipo.value,
         agrupado_por_classe=ident.agrupado_por_classe,
         metadados=ident.metadados.como_dict(),
+        impresso_em=hora_de_impressao(leitor),
         pilotos=pilotos,
         avisos=avisos,
     )
