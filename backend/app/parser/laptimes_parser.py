@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from app.models.lap_data import PilotoLaps, ResultadoParsingPDF, VoltaLeitura
 from app.parser.cabecalho import Coluna, coluna_numerica_mais_proxima
 from app.parser.conversao import tempo_em_segundos, velocidade_kmh
-from app.parser.pdf_texto import LeitorPDF, Palavra, agrupar_linhas
+from app.parser.pdf_texto import FontePaginas, LeitorPDF, Palavra, agrupar_linhas
 from app.parser.tipo_pdf import localizar_cabecalho
 
 PADRAO_CABECALHO_PILOTO = re.compile(r"^\((\d+)\)$")      # "(171)"
@@ -235,23 +235,24 @@ def _palavras_por_grupo(corpo: list[Palavra], grupos: list[_Grupo]) -> dict[int,
     return por_grupo
 
 
-def parse_laptimes(leitor: LeitorPDF, nome_arquivo: str | None = None) -> ResultadoParsingPDF:
+def parse_laptimes(leitor: FontePaginas, nome_arquivo: str | None = None) -> ResultadoParsingPDF:
     """Lê todas as páginas do Laptimes na ordem de leitura (serpentina)."""
     estado: _Estado | None = None
     esquema: tuple[int, bool] | None = None   # (nº de setores, tem radar) da 1ª página
     avisos_pagina: list[str] = []
 
     for n in range(leitor.num_paginas):
+        pagina = leitor.numero_pagina(n)        # como o usuário vê no PDF
         palavras = leitor.palavras(n)
         linhas = agrupar_linhas(palavras)
         achado = localizar_cabecalho(linhas)
         if achado is None:
-            avisos_pagina.append(f"Página {n + 1}: sem linha de títulos (Lap, Lap Tm…) — ignorada.")
+            avisos_pagina.append(f"Página {pagina}: sem linha de títulos (Lap, Lap Tm…) — ignorada.")
             continue
         indice, colunas = achado
         grupos = _montar_grupos(colunas)
         if not grupos or grupos[0].tempo is None:
-            avisos_pagina.append(f"Página {n + 1}: títulos sem 'Lap'/'Lap Tm' — ignorada.")
+            avisos_pagina.append(f"Página {pagina}: títulos sem 'Lap'/'Lap Tm' — ignorada.")
             continue
 
         esta = (len(grupos[0].setores), grupos[0].radar is not None)
@@ -260,7 +261,7 @@ def parse_laptimes(leitor: LeitorPDF, nome_arquivo: str | None = None) -> Result
             estado = _Estado(num_setores=esta[0])
         elif esta != esquema:
             avisos_pagina.append(
-                f"Página {n + 1}: colunas diferentes da 1ª página ({esta} vs {esquema}) — ignorada."
+                f"Página {pagina}: colunas diferentes da 1ª página ({esta} vs {esquema}) — ignorada."
             )
             continue
 

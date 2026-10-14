@@ -10,9 +10,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.parser.pdf_texto import LeitorPDF
+from app.parser.laptimes_parser import parse_laptimes
+from app.parser.pdf_texto import LeitorPDF, TrechoPDF
 from app.parser.resumo_parser import parse_resumo_pdf
-from app.parser.tipo_pdf import TipoRelatorio, TipoSessao, identificar
+from app.parser.tipo_pdf import TipoRelatorio, TipoSessao, desmontar, identificar
 
 SAMPLES = Path(__file__).resolve().parents[2] / "samples"
 PDF_LAPTIMES = SAMPLES / "MBR - 4o TREINO OFICIAL MBR - GRUPO 1 - Laptimes_sec4.pdf"
@@ -25,6 +26,11 @@ CASC_RACEFULL = CASCAVEL / "SABADO" / "5ET - MBR - CORRIDA 1 - MBR - RaceFull.pd
 
 tem_cuiaba = pytest.mark.skipif(not PDF_LAPTIMES.exists(), reason="PDFs de Cuiabá ausentes")
 tem_cascavel = pytest.mark.skipif(not CASC_TREINO.exists(), reason="PDFs de Cascavel ausentes")
+
+# Documento oficial COMPILADO (assinado pelos comissários): resumo + Laptimes
+# do Classificatório e do Top Qualifying, mais o consolidado, num PDF só.
+TARUMA = SAMPLES / "8ET - FT - TARUMA" / "RESULTADO - CLASSIFICATORIO (FT BOMBA INJETORA).pdf"
+tem_taruma = pytest.mark.skipif(not TARUMA.exists(), reason="PDF compilado de Tarumã ausente")
 
 client = TestClient(app)
 
@@ -128,3 +134,71 @@ def test_analise_com_resumo_traz_classes():
     assert paioli["classe"] == "MASTER"
     # 26/26 batem com o oficial: nenhuma divergência de melhor volta
     assert not any("Divergência" in a for a in dados["avisos_parsing"])
+
+
+@tem_taruma
+def test_desmonta_o_documento_oficial_compilado():
+    """6 páginas, 5 relatórios: cada um com o tipo, a sessão e as páginas certas."""
+    with LeitorPDF(str(TARUMA)) as leitor:
+        relatorios = desmontar(leitor)
+        laptimes = parse_laptimes(TrechoPDF(leitor, relatorios[1].paginas))
+
+    assert [(r.ident.tipo, r.ident.metadados.sessao, r.descricao_paginas()) for r in relatorios] == [
+        (TipoRelatorio.RESUMO, "CLASSIFICATORIO - FT", "pág. 1"),
+        (TipoRelatorio.LAPTIMES, "CLASSIFICATORIO - FT", "pág. 2–3"),
+        (TipoRelatorio.RESUMO, "TOP QUALIFYING - FT", "pág. 4"),
+        (TipoRelatorio.LAPTIMES, "TOP QUALIFYING - FT", "pág. 5"),
+        (TipoRelatorio.NAO_SUPORTADO, None, "pág. 6"),
+    ]
+    assert [r.ident.metadados.data_hora for r in relatorios[:4]] == [
+        "10/10/2026 13:40", "10/10/2026 13:40", "10/10/2026 14:10", "10/10/2026 14:10",
+    ]
+    assert all(r.ident.metadados.tipo_sessao is TipoSessao.QUALY for r in relatorios[:4])
+    assert relatorios[4].ident.detalhe == "consolidado de sessões"
+
+    # O Laptimes do Classificatório continua da pág. 2 para a 3 (o #102 começa
+    # no fim da pág. 2): 17 carros, nenhum aviso.
+    assert len(laptimes.pilotos) == 17 and laptimes.avisos == []
+    b_manica = next(p for p in laptimes.pilotos if p.numero_carro == "102")
+    assert len(b_manica.voltas) == 12
+
+
+@tem_taruma
+def test_analise_do_documento_compilado_com_as_duas_sessoes():
+    """
+    O PDF que o app recusava na pista: agora abre o Classificatório (1ª sessão
+    do dia) com classe e posição do resumo da pág. 1, e o Top Qualifying fica
+    no seletor. Conferido contra o resultado oficial impresso no próprio PDF.
+    """
+    arquivos = [("arquivos", (TARUMA.name, TARUMA.read_bytes(), "application/pdf"))]
+    resp = client.post("/analise", files=arquivos)
+    assert resp.status_code == 200, resp.json()
+    d = resp.json()
+    assert [(s["sessao"], s["data_hora"], s["num_pilotos"], s["arquivos"]) for s in d["sessoes"]] == [
+        ("CLASSIFICATORIO - FT", "10/10/2026 13:40", 17, [f"{TARUMA.name} (pág. 2–3)"]),
+        ("TOP QUALIFYING - FT", "10/10/2026 14:10", 7, [f"{TARUMA.name} (pág. 5)"]),
+    ]
+    assert d["sessao_chave"] == d["sessoes"][0]["chave"]
+    assert d["arquivo_origem"] == f"{TARUMA.name} (pág. 2–3)"
+    assert d["modo"] == "qualy" and d["num_setores"] == 3 and d["tem_radar"]
+    # Só o consolidado da pág. 6 é ignorado: sem divergência nem resumo "de fora".
+    assert d["avisos_parsing"] == [
+        f"Arquivo ignorado — '{TARUMA.name} (pág. 6)': relatório não suportado (consolidado de sessões)."
+    ]
+    por_carro = {p["numero_carro"]: p for p in d["pilotos"]}
+    assert all(p["classe"] == "FT" for p in d["pilotos"])
+    conci = por_carro["377"]
+    assert conci["posicao_oficial"] == 1 and conci["melhor_volta_s"] == pytest.approx(84.643)
+    assert conci["numero_volta_melhor"] == 7
+    assert conci["voltas_desconsideradas"] == [2]   # 1:24.337 sem negrito
+    assert por_carro["79"]["melhor_volta_s"] is None and por_carro["79"]["posicao_oficial"] == 17
+
+    top = d["sessoes"][1]["chave"]
+    d2 = client.post("/analise", files=arquivos, data={"sessao": top}).json()
+    assert d2["sessao_chave"] == top and d2["num_pilotos"] == 7
+    assert d2["metadados"]["sessao"] == "TOP QUALIFYING - FT"
+    por_carro = {p["numero_carro"]: p for p in d2["pilotos"]}
+    assert por_carro["377"]["melhor_volta_s"] == pytest.approx(84.842)
+    # 275 perdeu a melhor volta por punição (radar): sem volta oficial.
+    assert por_carro["275"]["melhor_volta_s"] is None and por_carro["275"]["posicao_oficial"] == 7
+    assert any("Carro 440" in a and "sem nenhuma volta" in a for a in d2["avisos_parsing"])

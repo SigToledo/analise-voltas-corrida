@@ -117,6 +117,22 @@ export interface GrupoSessao {
   num_pilotos: number
 }
 
+/**
+ * Uma sessão encontrada nos PDFs enviados. O documento oficial compilado
+ * (ex.: RESULTADO do classificatório da Truck) traz mais de uma: o app
+ * analisa uma por vez e o usuário troca pelo seletor do topo.
+ */
+export interface SessaoDisponivel {
+  /** Devolvida ao backend para pedir a análise desta sessão. */
+  chave: string
+  sessao: string | null
+  data_hora: string | null
+  tipo_sessao: Modo | null
+  num_pilotos: number
+  /** Laptimes da sessão (com as páginas, se vieram de um compilado). */
+  arquivos: string[]
+}
+
 export interface VoltaIdealEquipe {
   setores: DonoDoSetor[]
   total_s: number | null
@@ -157,5 +173,9 @@ export interface AnaliseSessao {
   voltas_por_carro: Record<string, VoltaLeitura[]>
   /** Grupos juntados, na ordem do horário. Vazio numa sessão única. */
   grupos: GrupoSessao[]
+  /** Todas as sessões dos PDFs enviados, na ordem do horário (normalmente uma). */
+  sessoes: SessaoDisponivel[]
+  /** Qual delas está nesta análise. */
+  sessao_chave: string | null
   avisos_parsing: string[]
 }

@@ -6,6 +6,7 @@ import { compararPilotos } from './ordem'
 import { ComparacaoScreen } from './screens/ComparacaoScreen'
 import { GanharTempoScreen } from './screens/GanharTempoScreen'
 import { UploadScreen } from './screens/UploadScreen'
+import { rotuloSessao } from './sessoes'
 import type { AnaliseSessao, Modo } from './types'
 
 type Tela = 'upload' | 'comparacao' | 'ganhar'
@@ -25,32 +26,54 @@ export default function App() {
   const [tela, setTela] = useState<Tela>('upload')
   const [selecionados, setSelecionados] = useState<string[]>([])
   const [mostrarAvisos, setMostrarAvisos] = useState(false)
-  // Os PDFs da sessão ficam guardados: trocar o modo reenvia os mesmos
-  // arquivos com outras regras, sem pedir o upload de novo.
+  // Os PDFs da sessão ficam guardados: trocar o modo (ou a sessão, quando os
+  // PDFs trazem mais de uma) reenvia os mesmos arquivos, sem pedir o upload
+  // de novo.
   const [arquivos, setArquivos] = useState<File[] | null>(null)
   const [recalculando, setRecalculando] = useState(false)
   // Filtros de grupo e classe: ficam aqui (e não em cada tela) para valerem
   // nas duas — a classe escolhida na Comparação vale no "Onde ganhar tempo".
   const [filtros, setFiltros] = useState<Filtros>(SEM_FILTRO)
-  const [erroModo, setErroModo] = useState<string | null>(null)
+  const [erroRecalculo, setErroRecalculo] = useState<string | null>(null)
 
-  async function trocarModo(modo: Modo) {
-    if (!arquivos || !analise || modo === analise.modo) return
+  /** Reenvia os mesmos PDFs com outro modo e/ou outra sessão. */
+  async function recalcular(modo: Modo | 'auto', sessao: string | undefined, outraSessao: boolean) {
+    if (!arquivos) return
     setRecalculando(true)
-    setErroModo(null)
+    setErroRecalculo(null)
     try {
-      setAnalise(await analisarPdfs(arquivos, modo))
+      const a = await analisarPdfs(arquivos, modo, sessao)
+      if (outraSessao) abrir(a)
+      else setAnalise(a)
     } catch (e) {
-      setErroModo(e instanceof Error ? e.message : 'Erro ao recalcular a análise.')
+      setErroRecalculo(e instanceof Error ? e.message : 'Erro ao recalcular a análise.')
     } finally {
       setRecalculando(false)
     }
   }
 
+  function trocarModo(modo: Modo) {
+    if (!analise || modo === analise.modo) return
+    recalcular(modo, analise.sessao_chave ?? undefined, false)
+  }
+
+  // Outra sessão = outros pilotos e outro tipo de sessão: o modo volta a ser
+  // o do PDF ('auto') e filtros e seleção recomeçam, como num upload novo.
+  function trocarSessao(chave: string) {
+    if (!analise || chave === analise.sessao_chave) return
+    recalcular('auto', chave, true)
+  }
+
   function aoConcluirUpload(a: AnaliseSessao, enviados: File[]) {
     setArquivos(enviados)
+    abrir(a)
+    setTela('comparacao')
+  }
+
+  /** Mostra uma análise nova: filtros zerados e os 2 primeiros selecionados. */
+  function abrir(a: AnaliseSessao) {
     setFiltros(SEM_FILTRO)
-    setErroModo(null)
+    setErroRecalculo(null)
     setAnalise(a)
     // Pré-seleciona os 2 primeiros (melhor volta; na corrida, o resultado).
     const doisPrimeiros = [...a.pilotos]
@@ -59,7 +82,6 @@ export default function App() {
       .slice(0, 2)
       .map((p) => p.numero_carro)
     setSelecionados(doisPrimeiros)
-    setTela('comparacao')
   }
 
   function alternarSelecionado(numeroCarro: string) {
@@ -106,6 +128,26 @@ export default function App() {
         {meta?.data_hora && <span className="dado">{meta.data_hora}</span>}
         {meta?.evento && <span className="dado">{meta.evento}</span>}
       </div>
+
+      {/* Sessão: só aparece quando os PDFs trazem mais de uma (ex.: o
+          documento oficial compilado, com Classificatório e Top Qualifying). */}
+      {analise.sessoes.length > 1 && (
+        <div className="seletor-modo seletor-sessao" role="group" aria-label="Sessão analisada">
+          <span className="rotulo">Sessão</span>
+          {analise.sessoes.map((s) => (
+            <button
+              key={s.chave}
+              className={analise.sessao_chave === s.chave ? 'ativo' : ''}
+              aria-pressed={analise.sessao_chave === s.chave}
+              title={`${s.num_pilotos} pilotos · ${s.arquivos.join(' + ')}`}
+              disabled={recalculando}
+              onClick={() => trocarSessao(s.chave)}
+            >
+              {rotuloSessao(s, analise.sessoes)}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="topbar">
         {/* Modo: as regras da análise. Vem do PDF ("Practice/Qualifying/Race"),
@@ -161,10 +203,10 @@ export default function App() {
         </div>
       </div>
 
-      {erroModo && (
+      {erroRecalculo && (
         <div className="erro-box" style={{ marginTop: 0 }}>
-          <b>Não foi possível trocar o modo.</b>
-          <div style={{ marginTop: '0.35rem' }}>{erroModo}</div>
+          <b>Não foi possível recalcular a análise.</b>
+          <div style={{ marginTop: '0.35rem' }}>{erroRecalculo}</div>
         </div>
       )}
 

@@ -36,8 +36,15 @@ garagem: do PDF da sessão ao "onde ganhar tempo" em poucos cliques.
 - **Junta os grupos da mesma sessão** (ex.: treinos da MBR em Grupo 1 e Grupo
   2; classificatório dividido por classe): basta mandar todos os PDFs juntos,
   em qualquer ordem. Cada piloto ganha a etiqueta do grupo, há um filtro por
-  grupo e a volta ideal é do grid inteiro. O app recusa juntar sessões,
-  dias ou pistas diferentes, e carros repetidos.
+  grupo e a volta ideal é do grid inteiro. O app nunca junta sessões, dias,
+  pistas ou categorias diferentes, nem grupos com carro repetido.
+- **Lê o PDF oficial compilado** (ex.: o RESULTADO do classificatório,
+  assinado pelos comissários, que junta resumo e Laptimes do Classificatório e
+  do Top Qualifying num arquivo só): cada página é identificada sozinha e o
+  arquivo é separado nos relatórios que contém.
+- **Várias sessões de uma vez**: quando os PDFs trazem mais de uma sessão (o
+  compilado, ou os PDFs soltos do dia), o app abre a primeira pelo horário e
+  um seletor no topo troca de sessão sem enviar os arquivos de novo.
 
 ### Princípio de integridade dos dados
 
@@ -92,7 +99,8 @@ npm run dev                    # http://localhost:5173 (faz proxy de /analise pa
 
 Abra `http://localhost:5173`, envie os PDFs da sessão (o Laptimes e, se quiser,
 o resumo QualifyReduced/RaceFull; os de todos os grupos, se a sessão roda em
-grupos) e navegue entre as telas de comparação e "onde ganhar tempo".
+grupos; ou o PDF oficial compilado) e navegue entre as telas de comparação e
+"onde ganhar tempo".
 
 Com o app instalado aberto, o backend dele já ocupa a porta 8000. Para
 desenvolver ao mesmo tempo, suba o backend em outra porta

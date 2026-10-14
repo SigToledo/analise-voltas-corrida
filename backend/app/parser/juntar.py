@@ -15,6 +15,11 @@ juntar o que não é da mesma sessão. Só juntamos quando:
 - nenhum carro aparece em dois grupos (nos 4 treinos e no classificatório de
   Cascavel, nenhum repete) e nenhum relatório foi enviado duas vezes.
 Qualquer falha vira ErroJuncao com o motivo — nunca uma junção "no chute".
+
+Antes de juntar, `separar_sessoes` divide os Laptimes recebidos em SESSÕES:
+o usuário pode mandar mais de uma de uma vez (o documento oficial compilado
+traz o Classificatório e o Top Qualifying; ou os PDFs soltos do dia), e o app
+analisa uma por vez — ele escolhe qual na tela.
 """
 
 from __future__ import annotations
@@ -122,6 +127,7 @@ def juntar_partes(
             )
         vistos[chave] = p.arquivo
 
+    _mesmo(partes, lambda p: p.metadados.etapa, "categorias")
     _mesmo(partes, lambda p: p.metadados.pista, "pistas")
     _mesmo(partes, lambda p: (p.metadados.data_hora or "").split(" ")[0], "datas")
     _mesmo(partes, lambda p: p.metadados.tipo_sessao.value if p.metadados.tipo_sessao else None, "tipos de sessão")
@@ -190,3 +196,84 @@ def _hora(data_hora: str | None) -> str:
         return ""
     h, _, m = data_hora.split(" ")[1].partition(":")
     return f"{int(h):02d}:{m}" if h.isdigit() else data_hora
+
+
+def _dia_e_hora(data_hora: str | None) -> str:
+    """'10/10/2026 13:40' -> '2026-10-10 13:40' (ordenável como texto)."""
+    if not data_hora:
+        return ""
+    dia, _, _ = data_hora.partition(" ")
+    partes = dia.split("/")
+    data = "-".join(reversed(partes)) if len(partes) == 3 else dia
+    return f"{data} {_hora(data_hora)}"
+
+
+def _mesmo_relatorio(a: ParteSessao, b: ParteSessao) -> bool:
+    return (a.metadados.sessao, a.metadados.data_hora) == (b.metadados.sessao, b.metadados.data_hora)
+
+
+def _difere_num_trecho_so(a: str | None, b: str | None) -> bool:
+    """'1º TREINO - GRUPO 1' x '1º TREINO - GRUPO 2': sim. Sem nome: não."""
+    if not a or not b:
+        return False
+    pa, pb = a.split(_SEPARADOR), b.split(_SEPARADOR)
+    return len(pa) == len(pb) and sum(x != y for x, y in zip(pa, pb)) == 1
+
+
+def _podem_ser_grupos(a: ParteSessao, b: ParteSessao) -> bool:
+    """
+    Dois Laptimes que podem ser GRUPOS da mesma sessão: mesma categoria
+    (linha da etapa, ex.: "7ET - FT - BOMBA INJETORA" x "7ET - GT - ELETRONICO"),
+    mesma pista, mesmo dia, mesmo tipo (nunca corrida), nomes que diferem num
+    trecho só e nenhum carro em comum.
+    """
+    ma, mb = a.metadados, b.metadados
+    if TipoSessao.CORRIDA in (ma.tipo_sessao, mb.tipo_sessao):
+        return False
+    dia_a, dia_b = (ma.data_hora or "").split(" ")[0], (mb.data_hora or "").split(" ")[0]
+    if (ma.etapa, ma.pista, dia_a, ma.tipo_sessao) != (mb.etapa, mb.pista, dia_b, mb.tipo_sessao):
+        return False
+    if not _difere_num_trecho_so(ma.sessao, mb.sessao):
+        return False
+    carros_a = {p.numero_carro for p in a.resultado.pilotos}
+    return carros_a.isdisjoint(p.numero_carro for p in b.resultado.pilotos)
+
+
+def separar_sessoes(partes: list[ParteSessao]) -> list[list[ParteSessao]]:
+    """
+    Divide os Laptimes em SESSÕES, na ordem do horário. Cada sessão é a lista
+    das suas partes: uma só, ou os grupos dela (que `juntar_partes` junta).
+
+    Duas partes ficam na mesma sessão quando podem ser grupos dela (ver
+    `_podem_ser_grupos`); qualquer outra combinação são sessões diferentes —
+    ex.: o Classificatório e o Top Qualifying da Truck diferem num trecho só
+    do nome, mas têm os mesmos carros.
+
+    O MESMO relatório (nome + horário) enviado duas vezes também fica na mesma
+    sessão, de propósito: `juntar_partes` o recusa com mensagem clara, em vez
+    de mostrar duas sessões iguais.
+    """
+    sessoes: list[list[ParteSessao]] = []
+    for parte in sorted(partes, key=lambda p: (_dia_e_hora(p.metadados.data_hora), p.metadados.sessao or "")):
+        destino = next(
+            (
+                s for s in sessoes
+                if all(_mesmo_relatorio(parte, outra) or _podem_ser_grupos(parte, outra) for outra in s)
+            ),
+            None,
+        )
+        if destino is None:
+            sessoes.append([parte])
+        else:
+            destino.append(parte)
+    return sessoes
+
+
+def chave_da_sessao(partes: list[ParteSessao]) -> str:
+    """
+    Identifica uma sessão entre as enviadas: nome + horário da sua 1ª parte
+    (ex.: "CLASSIFICATORIO - FT | 10/10/2026 13:40"). O frontend devolve a
+    chave para pedir a análise daquela sessão.
+    """
+    meta = partes[0].metadados
+    return f"{meta.sessao or partes[0].arquivo} | {meta.data_hora or ''}"

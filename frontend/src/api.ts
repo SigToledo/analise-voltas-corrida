@@ -15,6 +15,10 @@ const API_BASE = import.meta.env.PROD ? 'http://localhost:8000' : ''
  * `modo`: 'auto' deixa o backend ler do PDF se foi treino, qualy ou corrida;
  * os demais forçam as regras daquele tipo (o usuário escolhe na tela).
  *
+ * `sessao`: quando os PDFs trazem mais de uma sessão (ex.: o documento
+ * oficial compilado, com Classificatório e Top Qualifying), qual analisar —
+ * uma das chaves de `sessoes` da resposta. Sem ela, vale a 1ª do dia.
+ *
  * Lança um Error com mensagem amigável se o backend recusar um arquivo (ex:
  * tipo errado de relatório), para a tela de upload mostrar o erro sem
  * inventar nenhum dado.
@@ -22,10 +26,12 @@ const API_BASE = import.meta.env.PROD ? 'http://localhost:8000' : ''
 export async function analisarPdfs(
   arquivos: File[],
   modo: Modo | 'auto' = 'auto',
+  sessao?: string,
 ): Promise<AnaliseSessao> {
   const form = new FormData()
   for (const arquivo of arquivos) form.append('arquivos', arquivo)
   form.append('modo', modo)
+  if (sessao) form.append('sessao', sessao)
 
   let resposta: Response
   try {

@@ -18,10 +18,11 @@ from pathlib import Path
 import pytest
 
 from app.metrics.calculations import montar_analise_sessao
+from app.models.lap_data import ResultadoParsingPDF
 from app.parser.laptimes_parser import parse_laptimes
-from app.parser.pdf_texto import LeitorPDF
-from app.parser.resumo_parser import parse_resumo_pdf
-from app.parser.tipo_pdf import SECOES_NAO_CLASSE, TipoRelatorio, identificar
+from app.parser.pdf_texto import LeitorPDF, TrechoPDF
+from app.parser.resumo_parser import ResumoOficial, parse_resumo, parse_resumo_pdf
+from app.parser.tipo_pdf import SECOES_NAO_CLASSE, TipoRelatorio, desmontar, identificar
 
 SAMPLES = Path(__file__).resolve().parents[2] / "samples"
 
@@ -64,8 +65,12 @@ def test_laptimes_bate_com_o_resumo_oficial(laptimes: Path):
     oficial = _resumo_oficial(laptimes)
     if oficial is None:
         pytest.skip("sem resumo oficial da mesma sessão")
-    resumo = parse_resumo_pdf(str(oficial))
+    erros = _divergencias(resultado, parse_resumo_pdf(str(oficial)))
+    assert not erros, erros
 
+
+def _divergencias(resultado: ResultadoParsingPDF, resumo: ResumoOficial) -> list[str]:
+    """Carro a carro: melhor volta do app x 'Best Tm' oficial e voltas lidas x 'Laps'."""
     metricas = {m.numero_carro: m for m in montar_analise_sessao(resultado).pilotos}
     voltas = {p.numero_carro: len(p.voltas) for p in resultado.pilotos}
     erros = []
@@ -80,7 +85,46 @@ def test_laptimes_bate_com_o_resumo_oficial(laptimes: Path):
             erros.append(f"carro {po.numero_carro}: melhor volta {m.melhor_volta_s} x oficial {po.melhor_volta_s}")
         if po.voltas is not None and voltas[po.numero_carro] != po.voltas:
             erros.append(f"carro {po.numero_carro}: {voltas[po.numero_carro]} voltas x oficial {po.voltas}")
-    assert not erros, erros
+    return erros
+
+
+@pytest.mark.parametrize("pdf", _parametros(""))
+def test_cada_arquivo_vira_os_seus_relatorios(pdf: Path):
+    """
+    Identificação página a página (documento oficial compilado):
+    - relatório avulso do cronômetro vira UM relatório, com a mesma
+      identificação de sempre (pela 1ª página) — nada muda para eles;
+    - documento compilado: cada Laptimes dentro dele bate com o resumo da
+      MESMA sessão que vem no próprio arquivo.
+    """
+    with LeitorPDF(str(pdf)) as leitor:
+        relatorios = desmontar(leitor)
+        if len(relatorios) == 1:
+            assert relatorios[0].ident == identificar(leitor)
+            assert relatorios[0].paginas == list(range(leitor.num_paginas))
+            return
+
+        por_sessao: dict[tuple, dict] = {}
+        for r in relatorios:
+            trecho = TrechoPDF(leitor, r.paginas)
+            chave = (r.ident.metadados.sessao, r.ident.metadados.data_hora)
+            if r.ident.tipo is TipoRelatorio.LAPTIMES:
+                por_sessao.setdefault(chave, {})["laptimes"] = parse_laptimes(trecho)
+            elif r.ident.tipo is TipoRelatorio.RESUMO:
+                por_sessao.setdefault(chave, {})["resumo"] = parse_resumo(trecho, r.ident)
+
+    conferidas = 0
+    for chave, partes in por_sessao.items():
+        if "laptimes" not in partes:
+            continue
+        resultado = partes["laptimes"]
+        assert resultado.pilotos and resultado.avisos == [], (chave, resultado.avisos[:5])
+        if "resumo" in partes:
+            assert partes["resumo"].avisos == [], (chave, partes["resumo"].avisos)
+            erros = _divergencias(resultado, partes["resumo"])
+            assert not erros, (chave, erros)
+            conferidas += 1
+    assert conferidas, "documento compilado sem nenhum par Laptimes + resumo"
 
 
 @pytest.mark.parametrize("relatorio", _parametros("RaceFull") + _parametros("QualifyReduced"))

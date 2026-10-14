@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.parser.cabecalho import distribuir_linha
 from app.parser.conversao import inteiro, tempo_em_segundos, voltas_atras
-from app.parser.pdf_texto import LeitorPDF, agrupar_linhas
+from app.parser.pdf_texto import FontePaginas, LeitorPDF, agrupar_linhas
 from app.parser.tipo_pdf import (
     SECOES_FIM_DA_TABELA,
     SECOES_NAO_CLASSE,
@@ -90,7 +90,7 @@ def _diferenca(valores: dict[str, str], titulo: str, ref: str, avisos: list[str]
     return segundos, None
 
 
-def parse_resumo(leitor: LeitorPDF, ident: Identificacao, nome_arquivo: str | None = None) -> ResumoOficial:
+def parse_resumo(leitor: FontePaginas, ident: Identificacao, nome_arquivo: str | None = None) -> ResumoOficial:
     avisos: list[str] = []
     pilotos: list[PilotoResumo] = []
     classe_secao: str | None = None
