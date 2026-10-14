@@ -28,10 +28,15 @@ export function UploadScreen({ aoConcluir }: Props) {
 
   function adicionar(novos: FileList | null) {
     if (!novos) return
+    // Copia os arquivos AGORA. O FileList é "vivo": o onChange limpa o campo
+    // logo depois (e.target.value = ''), o que o esvazia — e o React pode
+    // rodar a função abaixo só mais tarde. Sem a cópia, da 2ª escolha em
+    // diante a lista chegava vazia e nenhum arquivo entrava.
+    const lista = [...novos]
     setErro(null)
     setArquivos((atuais) => {
       const vistos = new Set(atuais.map(chave))
-      return [...atuais, ...[...novos].filter((f) => !vistos.has(chave(f)))]
+      return [...atuais, ...lista.filter((f) => !vistos.has(chave(f)))]
     })
   }
 
